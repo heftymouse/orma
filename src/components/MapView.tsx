@@ -6,9 +6,10 @@ import { useDirectory } from '@/contexts/DirectoryContext'
 
 interface MapViewProps {
   photos: ImageRecord[]
+  onBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void
 }
 
-export default function MapView({ photos }: MapViewProps) {
+export default function MapView({ photos, onBoundsChange }: MapViewProps) {
   const mapRef = useRef<any | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const markersRef = useRef<any | null>(null)
@@ -33,6 +34,23 @@ export default function MapView({ photos }: MapViewProps) {
     markersRef.current = L.layerGroup().addTo(map)
     mapRef.current = map
 
+    // Emit bounds on map move/zoom
+    const updateBounds = () => {
+      const bounds = map.getBounds()
+      onBoundsChange?.({
+        north: bounds.getNorth(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        west: bounds.getWest(),
+      })
+    }
+    
+    map.on('moveend', updateBounds)
+    map.on('zoomend', updateBounds)
+    
+    // Initial bounds
+    setTimeout(updateBounds, 100)
+
     // Leaflet needs a size invalidation when the container becomes visible
     // and on resizes — call invalidateSize shortly after mount.
     setTimeout(() => {
@@ -54,7 +72,7 @@ export default function MapView({ photos }: MapViewProps) {
       mapRef.current = null
       markersRef.current = null
     }
-  }, [])
+  }, [onBoundsChange])
 
   // render markers whenever photos update
   useEffect(() => {
