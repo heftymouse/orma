@@ -37,6 +37,7 @@ const PhotoGrid = ({
   const [showAlbumDialog, setShowAlbumDialog] = useState(false)
   const [isCreatingAlbum, setIsCreatingAlbum] = useState(false)
   const [newAlbumName, setNewAlbumName] = useState('')
+  const [newAlbumError, setNewAlbumError] = useState<string | null>(null)
   const [selectedPhoto, setSelectedPhoto] = useState<ImageRecord | null>(null)
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -235,25 +236,40 @@ const PhotoGrid = ({
   const handleCreateAlbum = async () => {
     if (!repository || !newAlbumName.trim() || selectedPhotos.size === 0) return
 
+    const trimmed = newAlbumName.trim()
+
+    // Client-side duplicate check (case-insensitive)
+    const duplicate = albums.some(a => a.name.toLowerCase() === trimmed.toLowerCase())
+    if (duplicate) {
+      setNewAlbumError('An album with this name already exists')
+      return
+    }
+
     try {
       setIsCreatingAlbum(true)
+      setNewAlbumError(null)
       const albumId = await repository.createAlbum({
-        name: newAlbumName.trim(),
+        name: trimmed,
         description: `Album with ${selectedPhotos.size} photos`
       })
-      
+
       await repository.addImagesToAlbum(albumId, Array.from(selectedPhotos))
-      
+
       // Refresh albums list
       const updatedAlbums = await repository.getAlbums()
       setAlbums(updatedAlbums)
-      
+
       setNewAlbumName('')
       setShowAlbumDialog(false)
       exitSelectionMode()
-      console.log(`Created album "${newAlbumName}" with ${selectedPhotos.size} photos`)
-    } catch (error) {
-      console.error('Failed to create album:', error)
+      console.log(`Created album "${trimmed}" with ${selectedPhotos.size} photos`)
+    } catch (error: any) {
+      // If repository enforces uniqueness, surface that error to user
+      if (error && /album/i.test(String(error.message)) && /exist/i.test(String(error.message))) {
+        setNewAlbumError('An album with this name already exists')
+      } else {
+        console.error('Failed to create album:', error)
+      }
     } finally {
       setIsCreatingAlbum(false)
     }
@@ -549,7 +565,7 @@ const PhotoGrid = ({
                     type="text"
                     placeholder="Album name"
                     value={newAlbumName}
-                    onChange={(e) => setNewAlbumName(e.target.value)}
+                    onChange={(e) => { setNewAlbumName(e.target.value); if (newAlbumError) setNewAlbumError(null) }}
                     className="flex-1 px-3 py-2 border rounded-md text-sm"
                     onKeyPress={(e) => {
                       if (e.key === 'Enter' && newAlbumName.trim()) {
@@ -559,7 +575,7 @@ const PhotoGrid = ({
                   />
                   <Button
                     onClick={handleCreateAlbum}
-                    disabled={!newAlbumName.trim() || isCreatingAlbum}
+                    disabled={!newAlbumName.trim() || isCreatingAlbum || !!newAlbumError}
                     size="sm"
                   >
                     {isCreatingAlbum ? (
@@ -569,6 +585,9 @@ const PhotoGrid = ({
                     )}
                   </Button>
                 </div>
+                {newAlbumError && (
+                  <div className="text-sm text-red-600 mt-1">{newAlbumError}</div>
+                )}
               </div>
 
               {/* Existing Albums */}

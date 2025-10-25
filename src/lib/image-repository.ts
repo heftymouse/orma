@@ -571,6 +571,16 @@ export class ImageRepository {
       throw new Error('Repository not initialized. Call init() first.');
     }
 
+    // Check for duplicate album name (case-insensitive)
+    const existing = await this.db.query<{ id: number }>(
+      `SELECT id FROM albums WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+      [album.name]
+    );
+
+    if (existing.length > 0) {
+      throw new Error('Album name already exists')
+    }
+
     await this.db.exec(`
       INSERT INTO albums (name, description, coverImageId)
       VALUES (?, ?, ?)
