@@ -1,26 +1,13 @@
-import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
+import type { WorkerMessage, WorkerResponse } from './sqlite';
 
+let sqlite3: Sqlite3Static = null!;
 let db: any = null;
-
-// Message types for communication
-interface WorkerMessage {
-  id: number;
-  type: 'init' | 'exec' | 'query' | 'close';
-  sql?: string;
-  params?: any[];
-}
-
-interface WorkerResponse {
-  id: number;
-  type: 'success' | 'error';
-  data?: any;
-  error?: string;
-}
 
 // Initialize SQLite
 async function initSQLite() {
   try {
-    const sqlite3 = await sqlite3InitModule({
+    sqlite3 = await sqlite3InitModule({
       print: console.log,
       printErr: console.error,
     });
@@ -73,6 +60,14 @@ function querySQL(sql: string, params: any[] = []) {
   }
 }
 
+function exportDB() {
+  try {
+    return sqlite3.capi.sqlite3_js_db_export(db)
+  } catch (error) {
+    throw error;
+  }
+}
+
 // Close database
 function closeDB() {
   if (db) {
@@ -105,6 +100,10 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       case 'query':
         if (!sql) throw new Error('SQL is required');
         response.data = querySQL(sql, params);
+        break;
+
+      case 'export':
+        response.data = exportDB();
         break;
         
       case 'close':

@@ -22,7 +22,7 @@ function AppContent() {
   const [selectedPhoto, setSelectedPhoto] = useState<ImageRecord | null>(null)
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null)
 
-  const { repository, isInitialized } = useImageRepository()
+  const { repository, isInitialized, hasExistingDatabase } = useImageRepository()
   const { directoryHandle, setDirectoryHandle } = useDirectory()
 
   // Load photos when repository is initialized and directory is set
@@ -41,6 +41,18 @@ function AppContent() {
     
     if (!repository) return
     
+    // Fast path: if database was found, skip importing and just load photos
+    if (hasExistingDatabase) {
+      console.log('Using existing database, skipping import');
+      const images = await repository.getImages()
+      if (images) {
+        setPhotos(images)
+      }
+      return
+    }
+    
+    // Slow path: no database found, need to import all images
+    console.log('No database found, importing images...');
     setIsImporting(true)
     try {
       // Import all images from the directory
@@ -61,10 +73,42 @@ function AppContent() {
   const handleChangeDirectory = async () => {
     try {
       // @ts-ignore - showDirectoryPicker is not yet in TypeScript types
-      const handle = await window.showDirectoryPicker({ mode: 'read' })
+      const handle = await window.showDirectoryPicker({ mode: 'readwrite' })
       await handleDirectorySelected(handle)
     } catch (error) {
       console.error('Failed to pick directory:', error)
+    }
+  }
+
+  const handleEject = async () => {
+    if (!repository || !directoryHandle) {
+      console.error('Cannot eject: repository or directory not available')
+      return
+    }
+
+    try {
+      // Export the database to Uint8Array
+      const dbData = await repository.exportDatabase()
+      
+      // Request permission to save to the directory
+      const fileHandle = await directoryHandle.getFileHandle('orma.sqlite3', { create: true })
+      
+      // Request write permission
+      // @ts-ignore - requestPermission is not yet in standard TypeScript types
+      const permission = await fileHandle.requestPermission?.({ mode: 'readwrite' })
+      if (permission && permission !== 'granted') {
+        console.error('Write permission denied')
+        return
+      }
+      
+      // Write the database to the file
+      const writable = await fileHandle.createWritable()
+      await writable.write(new Uint8Array(dbData))
+      await writable.close()
+      
+      console.log('Database exported to orma.sqlite3')
+    } catch (error) {
+      console.error('Failed to eject database:', error)
     }
   }
 
@@ -120,6 +164,7 @@ function AppContent() {
         activeView={currentView}
         onNavigate={setCurrentView}
         onChangeDirectory={handleChangeDirectory}
+        onEject={handleEject}
         repository={repository}
       />
       <main className="max-w-7xl mx-auto p-4">

@@ -9,10 +9,11 @@ interface NavbarProps {
   activeView: ViewType
   onNavigate: (view: ViewType) => void
   onChangeDirectory: () => void
+  onEject: () => void
   repository: ImageRepository | null // Keep for future use
 }
 
-const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
+const Navbar = ({ activeView, onNavigate, onChangeDirectory, onEject }: NavbarProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const navItems = [
@@ -23,13 +24,13 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
     { id: 'memories' as const, label: 'Memories', icon: Sparkles },
   ]
 
-  const handleImportClick = async () => {
+  const handleChangeFolder = async () => {
+    onEject()
     onChangeDirectory()
   }
 
   const handleEjectClick = () => {
-    // TODO: Implement eject functionality
-    console.log('Eject clicked')
+    onEject()
   }
 
   const handleImport = () => {
@@ -66,7 +67,7 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button onClick={handleImportClick} variant="outline" size="default">
+          <Button onClick={handleChangeFolder} variant="outline" size="default">
             <FolderOpen size={16} />
             <span>Change Folder</span>
           </Button>
@@ -85,16 +86,17 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
       {/* Mobile */}
       <div className="md:hidden px-4 py-3">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <h1 className="text-lg font-semibold">Photo Library</h1>
+          <h1 className="text-lg font-semibold"></h1>
           <div className="flex items-center gap-2">
-            <Button onClick={handleEjectClick} variant="default" size="icon">
-              <LogOut size={16} />
+            <Button onClick={handleChangeFolder} variant="outline" size="icon">
+              <FolderOpen size={16} />
             </Button>
+            <div className='w-0 mx-2 h-6 border-l border-l-border' />
             <Button onClick={handleImport} variant="outline" size="icon">
               <Upload size={16} />
             </Button>
-            <Button onClick={handleImportClick} variant="outline" size="icon">
-              <FolderOpen size={16} />
+            <Button onClick={handleEjectClick} variant="default" size="icon">
+              <LogOut size={16} />
             </Button>
             <Button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} variant="ghost" size="icon">
               {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}

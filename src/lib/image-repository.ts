@@ -715,6 +715,17 @@ export class ImageRepository {
   }
 
   /**
+   * Export the database to a Uint8Array
+   */
+  async exportDatabase(): Promise<Uint8Array> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+    
+    return await this.db.export();
+  }
+
+  /**
    * Close the repository and database connection
    */
   async close(): Promise<void> {

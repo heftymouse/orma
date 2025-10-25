@@ -1,13 +1,13 @@
 // Main thread interface for SQLite Web Worker
 
-interface WorkerMessage {
+export interface WorkerMessage {
   id: number;
-  type: 'init' | 'exec' | 'query' | 'close';
+  type: 'init' | 'exec' | 'query' | 'close' | 'export';
   sql?: string;
   params?: any[];
 }
 
-interface WorkerResponse {
+export interface WorkerResponse {
   id: number;
   type: 'success' | 'error';
   data?: any;
@@ -18,6 +18,37 @@ type PendingRequest = {
   resolve: (value: any) => void;
   reject: (reason: any) => void;
 };
+
+/**
+ * Helper functions for OPFS operations
+ */
+export async function clearOPFS(): Promise<void> {
+  const opfsRoot = await navigator.storage.getDirectory();
+  // @ts-ignore - entries() exists on FileSystemDirectoryHandle
+  for await (const [name, handle] of opfsRoot.entries()) {
+    await opfsRoot.removeEntry(name, { recursive: true });
+  }
+  console.log('Cleared OPFS');
+}
+
+export async function writeToOPFS(filename: string, data: Uint8Array): Promise<void> {
+  const opfsRoot = await navigator.storage.getDirectory();
+  const fileHandle = await opfsRoot.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(new Uint8Array(data));
+  await writable.close();
+  console.log(`Wrote ${data.length} bytes to OPFS: ${filename}`);
+}
+
+export async function checkFileInOPFS(filename: string): Promise<boolean> {
+  try {
+    const opfsRoot = await navigator.storage.getDirectory();
+    await opfsRoot.getFileHandle(filename);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export class SQLiteWorker {
   private worker: Worker;
@@ -98,6 +129,13 @@ export class SQLiteWorker {
       throw new Error('Database not initialized. Call init() first.');
     }
     return await this.sendMessage('query', sql, params);
+  }
+
+  async export(): Promise<Uint8Array> {
+    if (!this.initialized) {
+      throw new Error('Database not initialized. Call init() first.');
+    }
+    return await this.sendMessage('export');
   }
 
   /**
