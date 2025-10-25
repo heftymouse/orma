@@ -3,9 +3,10 @@ import { useState, useEffect } from 'react'
 
 interface TimelineProps {
   photos: ImageFileMetadata[]
+  onImageClick?: (photo: ImageFileMetadata, src: string) => void
 }
 
-const Timeline = ({ photos }: TimelineProps) => {
+const Timeline = ({ photos, onImageClick }: TimelineProps) => {
   const [imageUrls, setImageUrls] = useState<string[]>([])
 
   useEffect(() => {
@@ -27,7 +28,11 @@ const Timeline = ({ photos }: TimelineProps) => {
       {imageUrls.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {imageUrls.map((url, index) => (
-            <div key={index} className="aspect-square rounded-md overflow-hidden bg-gray-100 shadow-sm">
+            <div
+              key={index}
+              className="aspect-square rounded-md overflow-hidden bg-gray-100 shadow-sm cursor-pointer"
+              onClick={() => onImageClick?.(photos[index], url)}
+            >
               <img src={url} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
             </div>
           ))}
