@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Plus, FolderPlus, X, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import ImageLightbox from './ImageLightbox'
 
 interface PhotoGridProps {
   photos: ImageRecord[]
-  onImageClick?: (photo: ImageRecord, src: string) => void
   emptyMessage?: string
   showCount?: boolean
   countLabel?: string
@@ -25,7 +25,6 @@ interface GroupedPhotos {
 
 const PhotoGrid = ({ 
   photos, 
-  onImageClick, 
   emptyMessage = "No photos yet. Click Import to add photos.",
   showCount = true,
   countLabel = "photo",
@@ -38,6 +37,8 @@ const PhotoGrid = ({
   const [showAlbumDialog, setShowAlbumDialog] = useState(false)
   const [isCreatingAlbum, setIsCreatingAlbum] = useState(false)
   const [newAlbumName, setNewAlbumName] = useState('')
+  const [selectedPhoto, setSelectedPhoto] = useState<ImageRecord | null>(null)
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null)
 
   const { createBlobUrl } = useDirectory()
   const { repository } = useImageRepository()
@@ -120,8 +121,9 @@ const PhotoGrid = ({
     if (isSelectionMode) {
       handlePhotoSelect(photo.id!)
     } else {
-      // Open the photo
-      onImageClick?.(photo, url)
+      // Open the photo in lightbox
+      setSelectedPhoto(photo)
+      setSelectedPhotoUrl(url)
     }
   }
 
@@ -212,6 +214,11 @@ const PhotoGrid = ({
     } catch (error) {
       console.error('Failed to add photos to album:', error)
     }
+  }
+
+  const handleCloseLightbox = () => {
+    setSelectedPhoto(null)
+    setSelectedPhotoUrl(null)
   }
 
   const handleCreateAlbum = async () => {
@@ -483,6 +490,15 @@ const PhotoGrid = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Lightbox */}
+      {selectedPhoto && selectedPhotoUrl && (
+        <ImageLightbox
+          src={selectedPhotoUrl}
+          photo={selectedPhoto}
+          onClose={handleCloseLightbox}
+        />
       )}
     </div>
   )

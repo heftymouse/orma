@@ -5,7 +5,6 @@ import Albums from './pages/Albums'
 import Places from './pages/Places'
 import People from './pages/People'
 import Memories from './pages/Memories'
-import ImageLightbox from './components/ImageLightbox'
 import { DirectoryPicker } from './components/DirectoryPicker'
 import type { ImageRecord } from './lib/image-repository'
 import { ImageRepositoryProvider, useImageRepository } from './contexts/ImageRepositoryContext'
@@ -24,9 +23,6 @@ function AppContent() {
   const [pendingImport, setPendingImport] = useState<{ handle: FileSystemDirectoryHandle, shouldImport: boolean } | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [importType, setImportType] = useState<'directory' | 'files'>('directory')
-  // selected photo for lightbox
-  const [selectedPhoto, setSelectedPhoto] = useState<ImageRecord | null>(null)
-  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null)
 
   const { repository, isInitialized, hasExistingDatabase } = useImageRepository()
   const { directoryHandle, setDirectoryHandle } = useDirectory()
@@ -203,18 +199,6 @@ function AppContent() {
     }
   }
 
-  const handleOpenPhoto = async (photo: ImageRecord, src: string) => {
-    setSelectedPhoto(photo)
-    setSelectedPhotoUrl(src)
-  }
-
-  const handleClose = () => {
-    setSelectedPhoto(null)
-    if (selectedPhotoUrl) {
-      setSelectedPhotoUrl(null)
-    }
-  }
-
   // Show directory picker if no directory is selected
   if (!directoryHandle) {
     return <DirectoryPicker onDirectorySelected={handleDirectorySelected} />
@@ -235,7 +219,7 @@ function AppContent() {
   const renderView = () => {
     switch(currentView) {
       case 'timeline':
-        return <Timeline photos={photos} onImageClick={handleOpenPhoto} />
+        return <Timeline photos={photos} />
       case 'albums':
         return <Albums photos={photos} />
       case 'places':
@@ -245,7 +229,7 @@ function AppContent() {
       case 'memories':
         return <Memories photos={photos} />
       default:
-        return <Timeline photos={photos} onImageClick={handleOpenPhoto} />
+        return <Timeline photos={photos} />
     }
   }
 
@@ -266,15 +250,6 @@ function AppContent() {
           </div>
         )}
       </main>
-
-      {/* Lightbox rendered at top level so it overlays entire app */}
-      {selectedPhoto && selectedPhotoUrl && (
-        <ImageLightbox
-          src={selectedPhotoUrl}
-          photo={selectedPhoto}
-          onClose={handleClose}
-        />
-      )}
 
       {/* Import Dialog */}
       {showImportDialog && (
