@@ -15,7 +15,9 @@ export default defineConfig({
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
-    }
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    },
+    port: 5174,
   },
   optimizeDeps: {
     exclude: ['@sqlite.org/sqlite-wasm'],
