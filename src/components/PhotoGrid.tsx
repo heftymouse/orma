@@ -1,5 +1,5 @@
 import type { ImageRecord, Album } from '@/lib/image-repository'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useDirectory } from '@/contexts/DirectoryContext'
 import { useImageRepository } from '@/contexts/ImageRepositoryContext'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,18 @@ const PhotoGrid = ({
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [favouritePhotoIds, setFavouritePhotoIds] = useState<Set<number>>(new Set())
+
+  // Refs for drag-to-select (marquee)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const dragRef = useRef({
+    startX: 0,
+    startY: 0,
+    dragging: false,
+    thresholdExceeded: false,
+    initialSelected: new Set<number>() as Set<number>
+  })
+  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
 
   const { createBlobUrl } = useDirectory()
   const { repository } = useImageRepository()
@@ -140,6 +152,21 @@ const PhotoGrid = ({
     loadFavourites()
   }, [repository, photos]) // Re-load when photos change
 
+  // Exit selection mode with Escape key
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Esc') {
+        if (isSelectionMode) {
+          setIsSelectionMode(false)
+          setSelectedPhotos(new Set())
+        }
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [isSelectionMode])
+
   const handlePhotoClick = (photo: ImageRecord, url: string) => {
     if (isSelectionMode) {
       handlePhotoSelect(photo.id!)
@@ -149,6 +176,112 @@ const PhotoGrid = ({
       setSelectedPhotoUrl(url)
     }
   }
+
+  // Helpers for marquee selection
+  const rectsIntersect = (r1: { left: number; top: number; right: number; bottom: number }, r2: { left: number; top: number; right: number; bottom: number }) => {
+    return !(r1.left > r2.right || r1.right < r2.left || r1.top > r2.bottom || r1.bottom < r2.top)
+  }
+
+  const updateSelectionFromMarquee = (m: { x: number; y: number; w: number; h: number }, options?: { add?: boolean }) => {
+    const container = containerRef.current
+    if (!container) return
+
+    const containerRect = container.getBoundingClientRect()
+    const marqueeRect = {
+      left: m.x,
+      top: m.y,
+      right: m.x + m.w,
+      bottom: m.y + m.h
+    }
+
+    const matchedIds: number[] = []
+    for (const [id, el] of itemRefs.current.entries()) {
+      if (!el) continue
+      const r = el.getBoundingClientRect()
+      // convert to container-relative coords
+      const rel = {
+        left: r.left - containerRect.left,
+        top: r.top - containerRect.top,
+        right: r.right - containerRect.left,
+        bottom: r.bottom - containerRect.top
+      }
+      if (rectsIntersect(rel, marqueeRect)) matchedIds.push(id)
+    }
+
+    setSelectedPhotos(prev => {
+      const base = options?.add ? new Set(prev) : new Set<number>()
+      matchedIds.forEach(id => base.add(id))
+      // Enter selection mode if anything selected
+      if (base.size > 0) setIsSelectionMode(true)
+      return base
+    })
+  }
+
+  // Mouse handlers for marquee drag selection
+  const onMouseDownHandler = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return // only left click
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    dragRef.current.startX = x
+    dragRef.current.startY = y
+    dragRef.current.dragging = false
+    dragRef.current.thresholdExceeded = false
+    dragRef.current.initialSelected = new Set(selectedPhotos)
+  }
+
+  const onMouseMoveHandler = (e: React.MouseEvent<HTMLDivElement>) => {
+    // only proceed while left button is pressed
+    // e.buttons property used to detect mouse pressed state
+    if (e.buttons !== 1) return
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    const dx = x - dragRef.current.startX
+    const dy = y - dragRef.current.startY
+
+    if (!dragRef.current.thresholdExceeded) {
+      if (Math.hypot(dx, dy) > 5) {
+        dragRef.current.thresholdExceeded = true
+        dragRef.current.dragging = true
+        // prevent text selection while dragging
+        document.body.style.userSelect = 'none'
+      } else {
+        return
+      }
+    }
+
+    const left = Math.min(dragRef.current.startX, x)
+    const top = Math.min(dragRef.current.startY, y)
+    const w = Math.abs(x - dragRef.current.startX)
+    const h = Math.abs(y - dragRef.current.startY)
+    setMarquee({ x: left, y: top, w, h })
+
+    // Update selection; hold Ctrl/Cmd to add to existing selection
+    updateSelectionFromMarquee({ x: left, y: top, w, h }, { add: e.ctrlKey || e.metaKey })
+  }
+
+  const finishDrag = () => {
+    if (dragRef.current.dragging) {
+      dragRef.current.dragging = false
+      dragRef.current.thresholdExceeded = false
+      setMarquee(null)
+      document.body.style.userSelect = ''
+    }
+  }
+
+  const onMouseUpHandler = (e: React.MouseEvent<HTMLDivElement>) => {
+    finishDrag()
+  }
+
+  const onMouseLeaveHandler = (e: React.MouseEvent<HTMLDivElement>) => {
+    finishDrag()
+  }
+
 
   const handlePhotoSelect = (photoId: number) => {
     setSelectedPhotos(prev => {
@@ -336,7 +469,27 @@ const PhotoGrid = ({
   const hasPhotos = Object.keys(groupedPhotos).length > 0
 
   return (
-    <div className='relative'>
+    <div
+      className='relative'
+      ref={containerRef}
+      onMouseDown={onMouseDownHandler}
+      onMouseMove={onMouseMoveHandler}
+      onMouseUp={onMouseUpHandler}
+      onMouseLeave={onMouseLeaveHandler}
+    >
+      {/* Marquee overlay for drag selection */}
+      {marquee && (
+        <div
+          className="pointer-events-none z-50 border-2 border-blue-400 bg-blue-400/20 rounded-sm"
+          style={{
+            position: 'absolute',
+            left: `${marquee.x}px`,
+            top: `${marquee.y}px`,
+            width: `${marquee.w}px`,
+            height: `${marquee.h}px`
+          }}
+        />
+      )}
       {showCount && (
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm text-muted-foreground">
@@ -457,6 +610,12 @@ const PhotoGrid = ({
                     return (
                       <div
                         key={photo.id ?? index}
+                        ref={(el) => {
+                          if (photo.id) {
+                            if (el) itemRefs.current.set(photo.id, el)
+                            else itemRefs.current.delete(photo.id)
+                          }
+                        }}
                         className={cn(
                           "group relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer",
                           isSelected && "ring-2 ring-blue-500"
