@@ -25,7 +25,7 @@ async function initSQLite() {
       printErr: console.error,
     });
     
-    db = new sqlite3.oo1.DB('/mydb.sqlite3', 'ct');
+    db = new sqlite3.oo1.DB('/orma.sqlite3', 'ct', "opfs");
     
     return { success: true };
   } catch (error) {
@@ -37,6 +37,8 @@ async function initSQLite() {
 function execSQL(sql: string, params: any[] = []) {
   if (!db) throw new Error('Database not initialized');
   
+  console.log(params)
+
   try {
     db.exec({
       sql,

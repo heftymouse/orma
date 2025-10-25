@@ -2,15 +2,15 @@ import { useEffect, useState, useRef } from "react"
 import { X, Info, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import type { ImageRecord } from "@/lib/image-repository"
 
 interface ImageLightboxProps {
   src: string | null
-  file?: File
-  metadata?: any
+  photo: ImageRecord
   onClose: () => void
 }
 
-export default function ImageLightbox({ src, file, metadata, onClose }: ImageLightboxProps) {
+export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProps) {
   const [showInfo, setShowInfo] = useState(false)
   const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null)
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false)
@@ -54,6 +54,9 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
   const formatBytes = (n?: number) =>
     n == null ? "—" : n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`
 
+  const formatDate = (date?: Date) =>
+    date ? date.toLocaleString() : "—"
+
   // mouse movement => show controls and reset hide timer
   const handlePointerMove = () => {
     setShowControls(true)
@@ -76,8 +79,8 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
   // pointer events for pan
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return
-    isPanning.current = true
-    lastPos.current = { x: e.clientX, y: e.clientY }
+    isPanning.current = true;
+    lastPos.current = { x: e.clientX, y: e.clientY };
     (e.target as Element).setPointerCapture(e.pointerId)
   }
 
@@ -119,7 +122,7 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[50] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
     >
       {/* clickable backdrop layer */}
       <div
@@ -129,7 +132,7 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
 
       {/* actual content layer */}
       <div
-        className="relative w-full h-full flex items-center justify-center overflow-hidden z-[10]"
+        className="relative w-full h-full flex items-center justify-center overflow-hidden z-10"
         onMouseMove={handlePointerMove}
         onWheel={(e) => {
           e.preventDefault()
@@ -139,12 +142,12 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
         {/* top overlay: title left, controls right */}
         <div
           className={cn(
-            "absolute left-0 right-0 top-4 px-6 flex items-center justify-between transition-opacity z-[30]",
+            "absolute left-0 right-0 top-4 px-6 flex items-center justify-between transition-opacity z-30",
             showControls ? "opacity-100" : "opacity-0"
           )}
         >
           <div className="text-sm text-white/90 font-medium truncate max-w-[50%]">
-            {file?.name ?? "Photo"}
+            {photo.filename ?? "Photo"}
           </div>
 
           <div className="flex items-center gap-2">
@@ -189,7 +192,7 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
         >
           <img
             src={src}
-            alt={file?.name ?? "photo"}
+            alt={photo.filename ?? "photo"}
             className="max-w-[90vw] max-h-[90vh] object-contain select-none"
             draggable={false}
             onWheel={onWheel}
@@ -203,7 +206,7 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
         {/* Right-side metadata sidebar */}
         <aside
           className={cn(
-            "absolute top-0 right-0 h-full w-[360px] bg-card/95 backdrop-blur-sm border-l p-4 overflow-auto transition-transform z-[40]",
+            "absolute top-0 right-0 h-full w-[360px] bg-card/95 backdrop-blur-sm border-l p-4 overflow-auto transition-transform z-40",
             showInfo ? "translate-x-0 opacity-100" : "translate-x-[110%] opacity-0"
           )}
           style={{ scrollbarGutter: 'stable' }}
@@ -228,30 +231,37 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
           <div className="space-y-3 text-sm">
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Name</div>
-              <div className="font-medium text-gray-900">{file?.name ?? '—'}</div>
+              <div className="font-medium text-gray-900">{photo.filename ?? '—'}</div>
             </div>
 
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Type</div>
-              <div className="font-medium text-gray-900">{file?.type || 'image/*'}</div>
+              <div className="font-medium text-gray-900">{photo.mimeType || 'image/*'}</div>
             </div>
 
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Size</div>
-              <div className="font-medium text-gray-900">{formatBytes(file?.size)}</div>
+              <div className="font-medium text-gray-900">{formatBytes(photo.fileSize)}</div>
             </div>
 
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Last modified</div>
-              <div className="font-medium text-gray-900">{file?.lastModified ? new Date(file.lastModified).toLocaleString() : '—'}</div>
+              <div className="font-medium text-gray-900">{formatDate(photo.lastModified)}</div>
             </div>
+
+            {photo.dateTimeOriginal && (
+              <div className="bg-gray-50 p-3 rounded-lg">
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Date taken</div>
+                <div className="font-medium text-gray-900">{formatDate(photo.dateTimeOriginal)}</div>
+              </div>
+            )}
 
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Image dimensions</div>
               <div className="font-medium text-gray-900">{dimensions ? `${dimensions.w} × ${dimensions.h}` : 'Loading…'}</div>
             </div>
 
-            {metadata && (
+            {photo.metadata && (
               <div className="bg-gray-50 p-3 rounded-lg">
                 <button
                   onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
@@ -267,7 +277,7 @@ export default function ImageLightbox({ src, file, metadata, onClose }: ImageLig
                 
                 {showAdvancedDetails && (
                   <div className="mt-2 space-y-2">
-                    {Object.entries(metadata)
+                    {Object.entries(photo.metadata)
                       .filter(([key, value]) => value != null && value !== '' && key !== 'filename' && key !== 'fileSize' && key !== 'mimeType' && key !== 'lastModified')
                       .map(([key, value]) => (
                         <div key={key} className="flex justify-between">

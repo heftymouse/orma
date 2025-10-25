@@ -1,7 +1,8 @@
+import type { ImageRecord } from "@/lib/image-repository"
 import type { ImageFileMetadata } from "@/lib/utils"
 
 interface PlacesProps {
-  photos: ImageFileMetadata[]
+  photos: ImageRecord[]
 }
 
 const Places = ({ photos }: PlacesProps) => {

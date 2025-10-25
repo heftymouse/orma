@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import exifr from 'exifr'
+import type { ImageRepository } from './image-repository'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -25,6 +26,7 @@ interface EnumerateImagesOptions {
   maxDepth?: number;
   includeSubdirectories?: boolean;
   onProgress?: (current: number, total: number) => void;
+  repository?: ImageRepository;
 }
 
 /**
@@ -122,7 +124,7 @@ async function extractImageMetadata(file: File): Promise<any> {
         
         // File format
         'FileType', 'MIMEType',
-      ],
+      ]
     });
 
     return {
@@ -152,7 +154,8 @@ async function extractImageMetadata(file: File): Promise<any> {
  * const dirHandle = await window.showDirectoryPicker();
  * const images = await enumerateImageMetadata(dirHandle, {
  *   maxDepth: 3,
- *   onProgress: (current, total) => console.log(`${current}/${total}`)
+ *   onProgress: (current, total) => console.log(`${current}/${total}`),
+ *   repository: repo // Optional: save to database
  * });
  * ```
  */
@@ -162,7 +165,8 @@ export async function enumerateImageMetadata(
 ): Promise<ImageFileMetadata[]> {
   const {
     maxDepth = Infinity,
-    onProgress
+    onProgress,
+    repository
   } = options;
 
   const results: ImageFileMetadata[] = [];
@@ -181,11 +185,22 @@ export async function enumerateImageMetadata(
     
     try {
       const metadata = await extractImageMetadata(file);
-      results.push({
+      const imageData: ImageFileMetadata = {
         file,
         path,
         metadata
-      });
+      };
+      
+      // if (metadata.InteropVersion)
+      //   delete metadata.InteropVersion
+      // console.log(metadata)
+
+      // Save to database if repository provided
+      if (repository) {
+        await repository.saveImage(imageData);
+      }
+      
+      results.push(imageData);
     } catch (error) {
       results.push({
         file,
@@ -206,21 +221,38 @@ export async function enumerateImageMetadata(
 /**
  * Stream-based version that yields results as they are processed
  * More memory efficient for large directories
+ * 
+ * @example
+ * ```typescript
+ * for await (const imageData of enumerateImageMetadataStream(dirHandle, { 
+ *   maxDepth: 3,
+ *   repository: repo // Optional: save to database as we go
+ * })) {
+ *   console.log(imageData.path, imageData.metadata);
+ * }
+ * ```
  */
 export async function* enumerateImageMetadataStream(
   dirHandle: FileSystemDirectoryHandle,
   options: EnumerateImagesOptions = {}
 ): AsyncGenerator<ImageFileMetadata> {
-  const { maxDepth = Infinity } = options;
+  const { maxDepth = Infinity, repository } = options;
 
   for await (const { file, path } of enumerateFiles(dirHandle, '', 0, maxDepth)) {
     try {
       const metadata = await extractImageMetadata(file);
-      yield {
+      const imageData: ImageFileMetadata = {
         file,
         path,
         metadata
       };
+      
+      // Save to database if repository provided
+      if (repository) {
+        await repository.saveImage(imageData);
+      }
+      
+      yield imageData;
     } catch (error) {
       yield {
         file,

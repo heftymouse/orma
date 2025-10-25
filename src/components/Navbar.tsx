@@ -1,17 +1,18 @@
-import { Upload, Clock, FolderOpen, MapPin, Users, Sparkles, Menu, X } from 'lucide-react'
+import { Clock, FolderOpen, MapPin, Users, Sparkles, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { enumerateImageMetadata, type ImageFileMetadata } from '@/lib/utils'
+import type { ImageRepository } from '@/lib/image-repository'
 
 type ViewType = 'timeline' | 'albums' | 'places' | 'people' | 'memories'
 
 interface NavbarProps {
   activeView: ViewType
   onNavigate: (view: ViewType) => void
-  onImport: (files: ImageFileMetadata[]) => void
+  onChangeDirectory: () => void
+  repository: ImageRepository | null // Keep for future use
 }
 
-const Navbar = ({ activeView, onNavigate, onImport }: NavbarProps) => {
+const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const navItems = [
@@ -23,23 +24,7 @@ const Navbar = ({ activeView, onNavigate, onImport }: NavbarProps) => {
   ]
 
   const handleImportClick = async () => {
-    // const input = document.createElement('input')
-    // input.type = 'file'
-    // input.multiple = true
-    // input.accept = 'image/*'
-    // input.onchange = (e) => {
-    //   const target = e.target as HTMLInputElement
-    //   if (target.files) {
-    //     const files = Array.from(target.files)
-    //     onImport(files)
-    //   }
-    // }
-    // input.click()
-
-    // @ts-ignore
-    const dir = await window.showDirectoryPicker()
-    const imagesWithMetadata = await enumerateImageMetadata(dir)
-    onImport(imagesWithMetadata)
+    onChangeDirectory()
   }
 
   const handleNavClick = (id: ViewType) => {
@@ -72,8 +57,8 @@ const Navbar = ({ activeView, onNavigate, onImport }: NavbarProps) => {
 
         <div>
           <Button onClick={handleImportClick} variant="default" size="default">
-            <Upload size={16} />
-            <span>Import</span>
+            <FolderOpen size={16} />
+            <span>Change Folder</span>
           </Button>
         </div>
       </div>
@@ -84,7 +69,7 @@ const Navbar = ({ activeView, onNavigate, onImport }: NavbarProps) => {
           <h1 className="text-lg font-semibold">Photo Library</h1>
           <div className="flex items-center gap-2">
             <Button onClick={handleImportClick} variant="default" size="icon">
-              <Upload size={16} />
+              <FolderOpen size={16} />
             </Button>
             <Button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} variant="ghost" size="icon">
               {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
