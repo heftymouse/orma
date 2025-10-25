@@ -10,10 +10,11 @@ interface NavbarProps {
   onNavigate: (view: ViewType) => void
   onChangeDirectory: () => void
   onEject: () => void
+  onImport: () => void
   repository: ImageRepository | null // Keep for future use
 }
 
-const Navbar = ({ activeView, onNavigate, onChangeDirectory, onEject }: NavbarProps) => {
+const Navbar = ({ activeView, onNavigate, onChangeDirectory, onEject, onImport }: NavbarProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const navItems = [
@@ -33,9 +34,8 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory, onEject }: NavbarPr
     onEject()
   }
 
-  const handleImport = () => {
-    // TODO: Implement import functionality
-    console.log('Import clicked')
+  const handleImportClick = () => {
+    onImport()
   }
 
   const handleNavClick = (id: ViewType) => {
@@ -72,7 +72,7 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory, onEject }: NavbarPr
             <span>Change Folder</span>
           </Button>
           <div className='w-0 mx-2 h-6 border-l border-l-border' />
-          <Button onClick={handleImport} variant="outline" size="default">
+          <Button onClick={handleImportClick} variant="outline" size="default">
             <Upload size={16} />
             <span>Import</span>
           </Button>
@@ -92,7 +92,7 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory, onEject }: NavbarPr
               <FolderOpen size={16} />
             </Button>
             <div className='w-0 mx-2 h-6 border-l border-l-border' />
-            <Button onClick={handleImport} variant="outline" size="icon">
+            <Button onClick={handleImportClick} variant="outline" size="icon">
               <Upload size={16} />
             </Button>
             <Button onClick={handleEjectClick} variant="default" size="icon">

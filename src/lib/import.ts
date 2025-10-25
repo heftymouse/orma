@@ -137,10 +137,41 @@ async function extractImageMetadata(file: File): Promise<any> {
 }
 
 /**
+ * Recursively copy all files from source directory to target directory
+ */
+async function copyDirectory(
+  sourceDirHandle: FileSystemDirectoryHandle,
+  targetDirHandle: FileSystemDirectoryHandle,
+  currentPath: string = ''
+): Promise<void> {
+  // @ts-ignore - FileSystemDirectoryHandle is async iterable
+  for await (const [name, handle] of sourceDirHandle.entries()) {
+    if (handle.kind === 'file') {
+      // Copy file
+      const file = await handle.getFile();
+      const targetFileHandle = await targetDirHandle.getFileHandle(name, { create: true });
+      const writable = await targetFileHandle.createWritable();
+      await writable.write(file);
+      await writable.close();
+      
+      const path = currentPath ? `${currentPath}/${name}` : name;
+      console.log(`Copied file: ${path}`);
+    } else if (handle.kind === 'directory') {
+      // Create subdirectory and recurse
+      const targetSubDirHandle = await targetDirHandle.getDirectoryHandle(name, { create: true });
+      const subPath = currentPath ? `${currentPath}/${name}` : name;
+      await copyDirectory(handle, targetSubDirHandle, subPath);
+    }
+  }
+}
+
+/**
  * Recursively enumerate image files in a directory and extract their metadata
+ * Optionally copies the entire directory to a timestamped subdirectory
  * 
  * @param dirHandle - FileSystemDirectoryHandle to start enumeration from
  * @param options - Configuration options
+ * @param targetDirHandle - Optional target directory to copy files to (creates timestamped subdirectory)
  * @returns Array of image files with their metadata
  * 
  * @example
@@ -150,12 +181,13 @@ async function extractImageMetadata(file: File): Promise<any> {
  *   maxDepth: 3,
  *   onProgress: (current, total) => console.log(`${current}/${total}`),
  *   repository: repo // Optional: save to database
- * });
+ * }, targetDirHandle);
  * ```
  */
 export async function importImages(
   dirHandle: FileSystemDirectoryHandle,
-  options: ImportImagesOptions = {}
+  options: ImportImagesOptions = {},
+  targetDirHandle?: FileSystemDirectoryHandle
 ): Promise<ImageFileMetadata[]> {
   const {
     maxDepth = Infinity,
@@ -163,11 +195,28 @@ export async function importImages(
     repository
   } = options;
 
+  let effectiveDirHandle = dirHandle;
+  let pathPrefix = '';
+
+  // If target directory is provided, copy the entire directory first
+  if (targetDirHandle) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const importDirName = `import_${timestamp}`;
+    const importDirHandle = await targetDirHandle.getDirectoryHandle(importDirName, { create: true });
+    
+    console.log(`Copying directory to: ${importDirName}`);
+    await copyDirectory(dirHandle, importDirHandle);
+    console.log(`Directory copy complete`);
+    
+    effectiveDirHandle = importDirHandle;
+    pathPrefix = importDirName;
+  }
+
   const results: ImageFileMetadata[] = [];
   const files: { file: File; path: string }[] = [];
 
   // First pass: collect all image files
-  for await (const fileEntry of enumerateFiles(dirHandle, '', 0, maxDepth)) {
+  for await (const fileEntry of enumerateFiles(effectiveDirHandle, '', 0, maxDepth)) {
     files.push(fileEntry);
   }
 
@@ -179,9 +228,11 @@ export async function importImages(
     
     try {
       const metadata = await extractImageMetadata(file);
+      const finalPath = pathPrefix ? `${pathPrefix}/${path}` : path;
+      
       const imageData: ImageFileMetadata = {
         file,
-        path,
+        path: finalPath,
         metadata
       };
 
@@ -192,9 +243,10 @@ export async function importImages(
       
       results.push(imageData);
     } catch (error) {
+      const finalPath = pathPrefix ? `${pathPrefix}/${path}` : path;
       results.push({
         file,
-        path,
+        path: finalPath,
         metadata: null,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -252,4 +304,72 @@ export async function* importImagesStream(
       };
     }
   }
+}
+
+/**
+ * Import individual files (from file picker)
+ * Copies files to a timestamped subdirectory before importing
+ * 
+ * @param files - Array of File objects to import
+ * @param targetDirHandle - Directory handle where files should be copied
+ * @param repository - Optional repository to save images to
+ * @returns Array of imported image metadata
+ */
+export async function importFiles(
+  files: File[],
+  targetDirHandle: FileSystemDirectoryHandle,
+  repository?: ImageRepository
+): Promise<ImageFileMetadata[]> {
+  const results: ImageFileMetadata[] = [];
+
+  // Create a timestamped subdirectory for the imported files
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // Format: YYYY-MM-DDTHH-MM-SS
+  const importDirName = `import_${timestamp}`;
+  const importDirHandle = await targetDirHandle.getDirectoryHandle(importDirName, { create: true });
+  
+  console.log(`Created import directory: ${importDirName}`);
+
+  for (const file of files) {
+    // Check if it's an image file
+    if (!isImageFile(file.name)) {
+      console.warn(`Skipping non-image file: ${file.name}`);
+      continue;
+    }
+
+    try {
+      // Copy file to the import directory
+      const fileHandle = await importDirHandle.getFileHandle(file.name, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(file);
+      await writable.close();
+      
+      console.log(`Copied file to ${importDirName}/${file.name}`);
+      
+      // Extract metadata
+      const metadata = await extractImageMetadata(file);
+      const path = `${importDirName}/${file.name}`;
+      
+      const imageData: ImageFileMetadata = {
+        file,
+        path, // Use the new path in the import directory
+        metadata
+      };
+
+      // Save to database if repository provided
+      if (repository) {
+        await repository.saveImage(imageData);
+      }
+
+      results.push(imageData);
+    } catch (error) {
+      results.push({
+        file,
+        path: file.name,
+        metadata: null,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  return results;
 }

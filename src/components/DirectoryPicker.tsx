@@ -1,18 +1,22 @@
 import { FolderOpen } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface DirectoryPickerProps {
-  onDirectorySelected: (handle: FileSystemDirectoryHandle) => void;
+  onDirectorySelected: (handle: FileSystemDirectoryHandle, shouldImport: boolean) => void;
 }
 
 export function DirectoryPicker({ onDirectorySelected }: DirectoryPickerProps) {
+  const [shouldImport, setShouldImport] = useState(true);
+
   const handlePickDirectory = async () => {
     try {
       // @ts-ignore - showDirectoryPicker is not yet in TypeScript types
       const dirHandle = await window.showDirectoryPicker({
-        mode: 'read',
+        mode: 'readwrite',
       });
-      onDirectorySelected(dirHandle);
+      onDirectorySelected(dirHandle, shouldImport);
     } catch (error) {
       // User cancelled or error occurred
       console.error('Failed to pick directory:', error);
@@ -32,6 +36,20 @@ export function DirectoryPicker({ onDirectorySelected }: DirectoryPickerProps) {
           <p className="text-gray-600">
             Select a folder containing your photos to get started. We'll organize and help you browse your memories.
           </p>
+        </div>
+
+        <div className="mb-6 flex items-center justify-center gap-3 p-4 bg-gray-50 rounded-md">
+          <Checkbox
+            id="import-checkbox"
+            checked={shouldImport}
+            onCheckedChange={(checked) => setShouldImport(checked === true)}
+          />
+          <label
+            htmlFor="import-checkbox"
+            className="text-sm font-medium text-gray-700 cursor-pointer select-none"
+          >
+            Import photos if no database is found
+          </label>
         </div>
 
         <Button
