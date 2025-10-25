@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useDirectory } from '@/contexts/DirectoryContext'
 import { useImageRepository } from '@/contexts/ImageRepositoryContext'
 import { Button } from '@/components/ui/button'
-import { Check, Plus, FolderPlus, X } from 'lucide-react'
+import { Check, Plus, FolderPlus, X, ListChecks, Minus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PhotoGridProps {
@@ -117,7 +117,19 @@ const PhotoGrid = ({
     if (isSelectionMode) {
       handlePhotoSelect(photo.id!)
     } else {
+      // Open the photo
       onImageClick?.(photo, url)
+    }
+  }
+
+  const handleCheckboxClick = (photoId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!isSelectionMode) {
+      // Enter selection mode and select this photo
+      setIsSelectionMode(true)
+      setSelectedPhotos(new Set([photoId]))
+    } else {
+      handlePhotoSelect(photoId)
     }
   }
 
@@ -126,6 +138,10 @@ const PhotoGrid = ({
       const newSet = new Set(prev)
       if (newSet.has(photoId)) {
         newSet.delete(photoId)
+        // Exit selection mode if this was the last selected photo
+        if (newSet.size === 0) {
+          setIsSelectionMode(false)
+        }
       } else {
         newSet.add(photoId)
       }
@@ -150,8 +166,33 @@ const PhotoGrid = ({
     setSelectedPhotos(new Set(allPhotoIds))
   }
 
-  const deselectAll = () => {
-    setSelectedPhotos(new Set())
+  const handleMonthSelect = (monthPhotos: ImageRecord[]) => {
+    const monthPhotoIds = monthPhotos.filter(p => p.id).map(p => p.id!)
+    const allSelected = monthPhotoIds.every(id => selectedPhotos.has(id))
+    
+    setSelectedPhotos(prev => {
+      if (allSelected) {
+        // Deselect all photos in this month
+        // @ts-ignore
+        let newSet = prev.difference(new Set(monthPhotoIds))
+        // monthPhotoIds.forEach(id => newSet.delete(id))
+        // Exit selection mode if no photos are selected
+        if (newSet.size === 0) {
+          setIsSelectionMode(false)
+        }
+        return newSet
+      } else {
+        // Select all photos in this month
+        // @ts-ignore
+        let newSet = prev.union(new Set(monthPhotoIds))
+        // monthPhotoIds.forEach(id => newSet.add(id))
+        // Enter selection mode if not already in it
+        if (!isSelectionMode) {
+          setIsSelectionMode(true)
+        }
+        return newSet
+      }
+    })
   }
 
   const handleAddToAlbum = async (albumId: number) => {
@@ -200,60 +241,46 @@ const PhotoGrid = ({
   const hasPhotos = Object.keys(groupedPhotos).length > 0
 
   return (
-    <>
+    <div className='relative'>
       {showCount && (
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm text-muted-foreground">
             {photos.length} {countLabel}{photos.length !== 1 ? 's' : ''} imported
           </p>
-          
-          {!isSelectionMode && hasPhotos && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsSelectionMode(true)}
-            >
-              Select Photos
-            </Button>
-          )}
         </div>
       )}
 
       {/* Selection Mode Header */}
       {isSelectionMode && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center justify-between mb-3">
+        <div className="sticky w-full top-20 z-20 bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">
                 {selectedPhotos.size} photo{selectedPhotos.size !== 1 ? 's' : ''} selected
               </span>
-              {selectedPhotos.size > 0 && (
-                <Button variant="ghost" size="sm" onClick={deselectAll}>
-                  Clear
-                </Button>
-              )}
               <Button variant="ghost" size="sm" onClick={selectAll}>
+                <ListChecks size={16} />
                 Select All
               </Button>
             </div>
-            <Button variant="ghost" size="sm" onClick={exitSelectionMode}>
-              <X size={16} />
-              Cancel
-            </Button>
-          </div>
-          
-          {selectedPhotos.size > 0 && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => setShowAlbumDialog(true)}
-              >
-                <FolderPlus size={16} />
-                Add to Album
+            <div className='flex items-center gap-2'>
+              {selectedPhotos.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setShowAlbumDialog(true)}
+                  >
+                    <FolderPlus size={16} />
+                    Add to Album
+                  </Button>
+                </div>
+              )}
+              <Button variant="ghost" size="sm" onClick={exitSelectionMode}>
+                <X size={16} />
               </Button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
@@ -261,15 +288,44 @@ const PhotoGrid = ({
         <div className="space-y-8">
           {Object.entries(groupedPhotos)
             .sort(([a], [b]) => b.localeCompare(a)) // Sort months newest first
-            .map(([monthKey, { photos: monthPhotos, monthLabel }]) => (
+            .map(([monthKey, { photos: monthPhotos, monthLabel }]) => {
+              const monthPhotoIds = monthPhotos.filter(p => p.id).map(p => p.id!)
+              const selectedInMonth = monthPhotoIds.filter(id => selectedPhotos.has(id)).length
+              const allMonthSelected = monthPhotoIds.length > 0 && selectedInMonth === monthPhotoIds.length
+              const someMonthSelected = selectedInMonth > 0 && selectedInMonth < monthPhotoIds.length
+              
+              return (
               <div key={monthKey} className="space-y-4">
-                <div className="sticky top-0 z-10 border-b pb-2">
-                  <h2 className="text-lg font-semibold text-foreground">
-                    {monthLabel}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {monthPhotos.length} {countLabel}{monthPhotos.length !== 1 ? 's' : ''}
-                  </p>
+                <div className="sticky top-0 z-10 border-b pb-2 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">
+                      {monthLabel}
+                    </h2>
+                    <p className="text-sm text-muted-foreground">
+                      {monthPhotos.length} {countLabel}{monthPhotos.length !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  
+                  {/* Month selection checkbox */}
+                  <button
+                    onClick={() => handleMonthSelect(monthPhotos)}
+                    className="p-2 hover:bg-muted rounded-md transition-colors"
+                  >
+                    <div className={cn(
+                      "w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all",
+                      allMonthSelected 
+                        ? "bg-blue-500 border-blue-500" 
+                        : someMonthSelected
+                        ? "bg-blue-500/50 border-blue-500"
+                        : "border-gray-300"
+                    )}>
+                      {allMonthSelected && <Check size={14} className="text-white" />}
+                      {someMonthSelected && (
+                        <Minus size={16} />
+                        // <div className="w-2 h-2 bg-white rounded-sm" />
+                      )}
+                    </div>
+                  </button>
                 </div>
                 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
@@ -296,8 +352,7 @@ const PhotoGrid = ({
                           src={url} 
                           alt={photo.filename} 
                           className={cn(
-                            "w-full h-full object-cover group-hover:scale-105 transition-transform duration-200",
-                            isSelected && "scale-95"
+                            "w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                           )}
                         />
                         <div className={cn(
@@ -307,25 +362,29 @@ const PhotoGrid = ({
                             : "bg-black/0 group-hover:bg-black/10"
                         )} />
                         
-                        {/* Selection indicator */}
-                        {isSelectionMode && (
-                          <div className="absolute top-2 right-2">
-                            <div className={cn(
-                              "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
-                              isSelected 
-                                ? "bg-blue-500 border-blue-500" 
-                                : "bg-white/80 border-white"
-                            )}>
-                              {isSelected && <Check size={14} className="text-white" />}
-                            </div>
+                        {/* Selection indicator - show on hover or when selected */}
+                        <div 
+                          className={cn(
+                            "absolute top-2 right-2 transition-opacity duration-200",
+                            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          )}
+                          onClick={(e) => handleCheckboxClick(photo.id!, e)}
+                        >
+                          <div className={cn(
+                            "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
+                            isSelected 
+                              ? "bg-blue-500 border-blue-500" 
+                              : "bg-white/80 border-white"
+                          )}>
+                            {isSelected && <Check size={14} className="text-white" />}
                           </div>
-                        )}
+                        </div>
                       </div>
                     )
                   })}
                 </div>
               </div>
-            ))}
+            )})}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -429,7 +488,7 @@ const PhotoGrid = ({
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 

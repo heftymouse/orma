@@ -25,7 +25,6 @@ async function initSQLite() {
       printErr: console.error,
     });
     
-    (await navigator.storage.getDirectory()).getFileHandle("orma.sqlite3").then(e => e.remove());
     db = new sqlite3.oo1.DB('/orma.sqlite3', 'c', "opfs");
     
     return { success: true };
