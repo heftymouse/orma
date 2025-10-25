@@ -13,6 +13,8 @@ import { importImages, importFiles } from './lib/import'
 import { Button } from './components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select'
 import { FolderOpen, Files, X } from 'lucide-react'
+import { Toaster } from './components/ui/sonner'
+import { toast } from 'sonner'
 
 type ViewType = 'timeline' | 'albums' | 'places' | 'people' | 'memories'
 
@@ -102,6 +104,9 @@ function AppContent() {
   const handleEject = async () => {
     if (!repository || !directoryHandle) {
       console.error('Cannot eject: repository or directory not available')
+      toast.error('Cannot eject library', {
+        description: 'Repository or directory not available'
+      })
       return
     }
 
@@ -117,6 +122,9 @@ function AppContent() {
       const permission = await fileHandle.requestPermission?.({ mode: 'readwrite' })
       if (permission && permission !== 'granted') {
         console.error('Write permission denied')
+        toast.error('Permission denied', {
+          description: 'Write permission was denied for the directory'
+        })
         return
       }
       
@@ -126,8 +134,14 @@ function AppContent() {
       await writable.close()
       
       console.log('Database exported to orma.sqlite3')
+      toast.success('Library ejected successfully', {
+        description: 'Your changes have been saved.'
+      })
     } catch (error) {
-      console.error('Failed to eject database:', error)
+      console.error('Failed to eject library:', error)
+      toast.error('Failed to eject library', {
+        description: error instanceof Error ? error.message : 'An unknown error occurred'
+      })
     }
   }
 
@@ -235,6 +249,7 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Toaster />
       <Navbar 
         activeView={currentView}
         onNavigate={setCurrentView}
