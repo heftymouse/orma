@@ -1,6 +1,10 @@
-import type { ImageRecord } from '@/lib/image-repository'
+import type { ImageRecord, Album } from '@/lib/image-repository'
 import { useState, useEffect, useMemo } from 'react'
 import { useDirectory } from '@/contexts/DirectoryContext'
+import { useImageRepository } from '@/contexts/ImageRepositoryContext'
+import { Button } from '@/components/ui/button'
+import { Check, Plus, FolderPlus, X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface PhotoGridProps {
   photos: ImageRecord[]
@@ -25,7 +29,15 @@ const PhotoGrid = ({
   countLabel = "photo"
 }: PhotoGridProps) => {
   const [imageUrls, setImageUrls] = useState<Map<number, string>>(new Map())
+  const [selectedPhotos, setSelectedPhotos] = useState<Set<number>>(new Set())
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [albums, setAlbums] = useState<Album[]>([])
+  const [showAlbumDialog, setShowAlbumDialog] = useState(false)
+  const [isCreatingAlbum, setIsCreatingAlbum] = useState(false)
+  const [newAlbumName, setNewAlbumName] = useState('')
+
   const { createBlobUrl } = useDirectory()
+  const { repository } = useImageRepository()
 
   // Sort photos by date and group by month
   const groupedPhotos = useMemo(() => {
@@ -86,14 +98,163 @@ const PhotoGrid = ({
     }
   }, [photos, createBlobUrl])
 
+  useEffect(() => {
+    const loadAlbums = async () => {
+      if (repository) {
+        try {
+          const albumList = await repository.getAlbums()
+          setAlbums(albumList)
+        } catch (error) {
+          console.error('Failed to load albums:', error)
+        }
+      }
+    }
+
+    loadAlbums()
+  }, [repository])
+
+  const handlePhotoClick = (photo: ImageRecord, url: string) => {
+    if (isSelectionMode) {
+      handlePhotoSelect(photo.id!)
+    } else {
+      onImageClick?.(photo, url)
+    }
+  }
+
+  const handlePhotoSelect = (photoId: number) => {
+    setSelectedPhotos(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(photoId)) {
+        newSet.delete(photoId)
+      } else {
+        newSet.add(photoId)
+      }
+      return newSet
+    })
+  }
+
+  const handleLongPress = (photoId: number) => {
+    if (!isSelectionMode) {
+      setIsSelectionMode(true)
+      setSelectedPhotos(new Set([photoId]))
+    }
+  }
+
+  const exitSelectionMode = () => {
+    setIsSelectionMode(false)
+    setSelectedPhotos(new Set())
+  }
+
+  const selectAll = () => {
+    const allPhotoIds = photos.filter(p => p.id).map(p => p.id!)
+    setSelectedPhotos(new Set(allPhotoIds))
+  }
+
+  const deselectAll = () => {
+    setSelectedPhotos(new Set())
+  }
+
+  const handleAddToAlbum = async (albumId: number) => {
+    if (!repository || selectedPhotos.size === 0) return
+
+    try {
+      await repository.addImagesToAlbum(albumId, Array.from(selectedPhotos))
+      setShowAlbumDialog(false)
+      exitSelectionMode()
+      // Optionally show success message
+      console.log(`Added ${selectedPhotos.size} photos to album`)
+      const thingy = await repository.getAlbumImages(albumId)
+      console.log(thingy)
+    } catch (error) {
+      console.error('Failed to add photos to album:', error)
+    }
+  }
+
+  const handleCreateAlbum = async () => {
+    if (!repository || !newAlbumName.trim() || selectedPhotos.size === 0) return
+
+    try {
+      setIsCreatingAlbum(true)
+      const albumId = await repository.createAlbum({
+        name: newAlbumName.trim(),
+        description: `Album with ${selectedPhotos.size} photos`
+      })
+      
+      await repository.addImagesToAlbum(albumId, Array.from(selectedPhotos))
+      
+      // Refresh albums list
+      const updatedAlbums = await repository.getAlbums()
+      setAlbums(updatedAlbums)
+      
+      setNewAlbumName('')
+      setShowAlbumDialog(false)
+      exitSelectionMode()
+      console.log(`Created album "${newAlbumName}" with ${selectedPhotos.size} photos`)
+    } catch (error) {
+      console.error('Failed to create album:', error)
+    } finally {
+      setIsCreatingAlbum(false)
+    }
+  }
+
   const hasPhotos = Object.keys(groupedPhotos).length > 0
 
   return (
     <>
       {showCount && (
-        <p className="text-sm text-muted-foreground mb-6">
-          {photos.length} {countLabel}{photos.length !== 1 ? 's' : ''} imported
-        </p>
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-sm text-muted-foreground">
+            {photos.length} {countLabel}{photos.length !== 1 ? 's' : ''} imported
+          </p>
+          
+          {!isSelectionMode && hasPhotos && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSelectionMode(true)}
+            >
+              Select Photos
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Selection Mode Header */}
+      {isSelectionMode && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">
+                {selectedPhotos.size} photo{selectedPhotos.size !== 1 ? 's' : ''} selected
+              </span>
+              {selectedPhotos.size > 0 && (
+                <Button variant="ghost" size="sm" onClick={deselectAll}>
+                  Clear
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={selectAll}>
+                Select All
+              </Button>
+            </div>
+            <Button variant="ghost" size="sm" onClick={exitSelectionMode}>
+              <X size={16} />
+              Cancel
+            </Button>
+          </div>
+          
+          {selectedPhotos.size > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => setShowAlbumDialog(true)}
+              >
+                <FolderPlus size={16} />
+                Add to Album
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
       {hasPhotos ? (
@@ -114,20 +275,51 @@ const PhotoGrid = ({
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
                   {monthPhotos.map((photo, index) => {
                     const url = photo.id ? imageUrls.get(photo.id) : undefined
+                    const isSelected = photo.id ? selectedPhotos.has(photo.id) : false
+                    
                     if (!url) return null
                     
                     return (
                       <div
                         key={photo.id ?? index}
-                        className="group relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
-                        onClick={() => onImageClick?.(photo, url)}
+                        className={cn(
+                          "group relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer",
+                          isSelected && "ring-2 ring-blue-500"
+                        )}
+                        onClick={() => handlePhotoClick(photo, url)}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          if (photo.id) handleLongPress(photo.id)
+                        }}
                       >
                         <img 
                           src={url} 
                           alt={photo.filename} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
+                          className={cn(
+                            "w-full h-full object-cover group-hover:scale-105 transition-transform duration-200",
+                            isSelected && "scale-95"
+                          )}
                         />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-200" />
+                        <div className={cn(
+                          "absolute inset-0 transition-colors duration-200",
+                          isSelected 
+                            ? "bg-blue-500/20" 
+                            : "bg-black/0 group-hover:bg-black/10"
+                        )} />
+                        
+                        {/* Selection indicator */}
+                        {isSelectionMode && (
+                          <div className="absolute top-2 right-2">
+                            <div className={cn(
+                              "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
+                              isSelected 
+                                ? "bg-blue-500 border-blue-500" 
+                                : "bg-white/80 border-white"
+                            )}>
+                              {isSelected && <Check size={14} className="text-white" />}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -153,6 +345,88 @@ const PhotoGrid = ({
             </svg>
           </div>
           <p className="text-muted-foreground">{emptyMessage}</p>
+        </div>
+      )}
+
+      {/* Album Selection Dialog */}
+      {showAlbumDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full m-4 max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Add to Album</h3>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowAlbumDialog(false)}
+                >
+                  <X size={16} />
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">
+                Adding {selectedPhotos.size} photo{selectedPhotos.size !== 1 ? 's' : ''}
+              </p>
+            </div>
+
+            <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+              {/* Create New Album */}
+              <div className="space-y-2">
+                <h4 className="font-medium">Create New Album</h4>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Album name"
+                    value={newAlbumName}
+                    onChange={(e) => setNewAlbumName(e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-md text-sm"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && newAlbumName.trim()) {
+                        handleCreateAlbum()
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={handleCreateAlbum}
+                    disabled={!newAlbumName.trim() || isCreatingAlbum}
+                    size="sm"
+                  >
+                    {isCreatingAlbum ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                    ) : (
+                      <Plus size={16} />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Existing Albums */}
+              {albums.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-medium">Existing Albums</h4>
+                  <div className="space-y-1">
+                    {albums.map((album) => (
+                      <button
+                        key={album.id}
+                        onClick={() => handleAddToAlbum(album.id!)}
+                        className="w-full text-left p-3 rounded-md border hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="font-medium">{album.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {album.imageCount} photo{album.imageCount !== 1 ? 's' : ''}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {albums.length === 0 && (
+                <div className="text-center py-4 text-muted-foreground">
+                  <p>No albums yet. Create your first album above.</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </>
