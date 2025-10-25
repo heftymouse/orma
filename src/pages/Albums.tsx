@@ -119,7 +119,7 @@ const Albums = () => {
         {loadingPhotos ? (
           <div className="text-center py-12 text-gray-500">Loading album...</div>
         ) : (
-          <PhotoGrid photos={albumPhotos} />
+          <PhotoGrid photos={albumPhotos} actions={{}} />
         )}
       </div>
     )

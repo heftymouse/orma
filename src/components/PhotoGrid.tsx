@@ -13,6 +13,7 @@ interface PhotoGridProps {
   emptyMessage?: string
   showCount?: boolean
   countLabel?: string
+  actions: Record<string, () => void>
 }
 
 interface GroupedPhotos {
@@ -27,7 +28,8 @@ const PhotoGrid = ({
   onImageClick, 
   emptyMessage = "No photos yet. Click Import to add photos.",
   showCount = true,
-  countLabel = "photo"
+  countLabel = "photo",
+  actions
 }: PhotoGridProps) => {
   const [imageUrls, setImageUrls] = useState<Map<number, string>>(new Map())
   const [selectedPhotos, setSelectedPhotos] = useState<Set<number>>(new Set())
@@ -277,6 +279,11 @@ const PhotoGrid = ({
                   </Button>
                 </div>
               )}
+              {
+                Object.entries(actions).map(([name, fn]) => (
+                  <Button variant="secondary" onClick={fn}>{name}</Button>
+                ))
+              }
               <Button variant="ghost" size="sm" onClick={exitSelectionMode}>
                 <X size={16} />
               </Button>
