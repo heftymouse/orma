@@ -1,5 +1,6 @@
 import { Upload, Clock, FolderOpen, MapPin, Users, Sparkles, Menu, X } from 'lucide-react'
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 
 type ViewType = 'timeline' | 'albums' | 'places' | 'people' | 'memories'
 
@@ -41,57 +42,65 @@ const Navbar = ({ activeView, onNavigate, onImport }: NavbarProps) => {
   }
 
   return (
-    <nav className="navbar">
-      {/* Desktop Navigation */}
-      <div className="navbar-desktop">
-        <div className="nav-items">
+    <nav className="bg-white border-b sticky top-0 z-50">
+      {/* Desktop */}
+      <div className="hidden md:flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
+        <div className="flex items-center gap-2">
           {navItems.map((item) => {
             const Icon = item.icon
+            const active = activeView === item.id
             return (
-              <button
+              <Button
                 key={item.id}
+                variant={active ? 'secondary' : 'ghost'}
+                size="sm"
                 onClick={() => onNavigate(item.id)}
-                className={`nav-button ${activeView === item.id ? 'active' : ''}`}
+                className="flex items-center gap-2"
               >
-                <Icon size={20} />
+                <Icon size={16} />
                 <span>{item.label}</span>
-              </button>
+              </Button>
             )
           })}
         </div>
-        
-        <button onClick={handleImportClick} className="import-button">
-          <Upload size={20} />
-          <span>Import</span>
-        </button>
+
+        <div>
+          <Button onClick={handleImportClick} variant="default" size="default">
+            <Upload size={16} />
+            <span>Import</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Mobile Navigation */}
-      <div className="navbar-mobile">
-        <div className="navbar-content">
-          <h1 className="navbar-title">Photo Library</h1>
-          <div className="navbar-actions">
-            <button onClick={handleImportClick} className="import-button-mobile">
-              <Upload size={20} />
-            </button>
-            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="menu-button">
-              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+      {/* Mobile */}
+      <div className="md:hidden px-4 py-3">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
+          <h1 className="text-lg font-semibold">Photo Library</h1>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleImportClick} variant="default" size="icon">
+              <Upload size={16} />
+            </Button>
+            <Button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} variant="ghost" size="icon">
+              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+            </Button>
           </div>
         </div>
 
         {mobileMenuOpen && (
-          <div className="mobile-menu">
+          <div className="mt-2 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon
+              const active = activeView === item.id
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavClick(item.id)}
-                  className={`mobile-nav-button ${activeView === item.id ? 'active' : ''}`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-left ${
+                    active ? 'bg-blue-50 text-blue-600 border-l-4 border-blue-600' : 'hover:bg-gray-50'
+                  }`}
                 >
-                  <Icon size={20} />
-                  <span>{item.label}</span>
+                  <Icon size={18} />
+                  <span className="font-medium">{item.label}</span>
                 </button>
               )
             })}

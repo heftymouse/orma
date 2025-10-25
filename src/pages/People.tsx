@@ -4,10 +4,10 @@ interface PeopleProps {
 
 const People = ({ photos }: PeopleProps) => {
   return (
-    <div className="page-container">
-      <h1 className="page-title">People</h1>
-      <p className="page-subtitle">Photos organized by people</p>
-      <div className="empty-state">
+    <div className="container mx-auto">
+      <h1 className="text-2xl font-semibold mb-2">People</h1>
+      <p className="text-sm text-gray-500 mb-4">Photos organized by people</p>
+      <div className="text-center py-12 text-gray-400">
         <p>People view coming soon...</p>
       </div>
     </div>

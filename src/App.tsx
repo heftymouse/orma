@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import './styles/App.css'
 import Navbar from './components/Navbar'
 import Timeline from './pages/Timeline'
 import Albums from './pages/Albums'
@@ -36,13 +35,13 @@ function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className="min-h-screen bg-gray-50">
       <Navbar 
         activeView={currentView}
         onNavigate={setCurrentView}
         onImport={handleImport} 
       />
-      <main>
+      <main className="max-w-7xl mx-auto p-4">
         {renderView()}
       </main>
     </div>

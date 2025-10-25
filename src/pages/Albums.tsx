@@ -4,10 +4,10 @@ interface AlbumsProps {
 
 const Albums = ({ photos }: AlbumsProps) => {
   return (
-    <div className="page-container">
-      <h1 className="page-title">Albums</h1>
-      <p className="page-subtitle">Organize your photos into albums</p>
-      <div className="empty-state">
+    <div className="container mx-auto">
+      <h1 className="text-2xl font-semibold mb-2">Albums</h1>
+      <p className="text-sm text-gray-500 mb-4">Organize your photos into albums</p>
+      <div className="text-center py-12 text-gray-400">
         <p>Albums view coming soon...</p>
       </div>
     </div>

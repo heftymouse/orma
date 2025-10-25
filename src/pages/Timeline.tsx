@@ -17,22 +17,22 @@ const Timeline = ({ photos }: TimelineProps) => {
   }, [photos])
 
   return (
-    <div className="page-container">
-      <h1 className="page-title">Timeline</h1>
-      <p className="page-subtitle">
+    <div className="container mx-auto">
+      <h1 className="text-2xl font-semibold mb-2">Timeline</h1>
+      <p className="text-sm text-gray-500 mb-4">
         {photos.length} photo{photos.length !== 1 ? 's' : ''} imported
       </p>
-      
+
       {imageUrls.length > 0 ? (
-        <div className="photo-grid">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {imageUrls.map((url, index) => (
-            <div key={index} className="photo-item">
-              <img src={url} alt={`Photo ${index + 1}`} />
+            <div key={index} className="aspect-square rounded-md overflow-hidden bg-gray-100 shadow-sm">
+              <img src={url} alt={`Photo ${index + 1}`} className="w-full h-full object-cover" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="empty-state">
+        <div className="text-center py-12 text-gray-400">
           <p>No photos yet. Click Import to add photos.</p>
         </div>
       )}
