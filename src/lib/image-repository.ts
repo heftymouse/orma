@@ -1,5 +1,5 @@
 import { SQLiteWorker } from './sqlite';
-import type { ImageFileMetadata } from './utils';
+import type { ImageFileMetadata } from './import';
 
 /**
  * Raw database record (internal use)
@@ -48,6 +48,32 @@ export interface ImageRecord {
 export interface ImageRecordWithGPS extends ImageRecord {
   gpsLatitudeDecimal?: number;
   gpsLongitudeDecimal?: number;
+}
+
+/**
+ * Album record
+ */
+export interface Album {
+  id?: number;
+  name: string;
+  description?: string;
+  coverImageId?: number;
+  imageCount: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+/**
+ * Raw album database record (internal use)
+ */
+interface AlbumRecordRaw {
+  id?: number;
+  name: string;
+  description?: string;
+  coverImageId?: number;
+  imageCount: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ImageSearchQuery {
@@ -104,6 +130,21 @@ export class ImageRepository {
   }
 
   /**
+   * Transform raw album database record to public Album with parsed fields
+   */
+  private transformAlbumRecord(raw: AlbumRecordRaw): Album {
+    return {
+      id: raw.id,
+      name: raw.name,
+      description: raw.description,
+      coverImageId: raw.coverImageId,
+      imageCount: raw.imageCount,
+      createdAt: raw.createdAt ? new Date(raw.createdAt) : undefined,
+      updatedAt: raw.updatedAt ? new Date(raw.updatedAt) : undefined,
+    };
+  }
+
+  /**
    * Initialize the repository and create tables
    */
   async init(): Promise<void> {
@@ -142,6 +183,36 @@ export class ImageRepository {
     await this.db.exec('CREATE INDEX IF NOT EXISTS idx_images_path ON images(path)');
     await this.db.exec('CREATE INDEX IF NOT EXISTS idx_images_date ON images(dateTimeOriginal)');
     await this.db.exec('CREATE INDEX IF NOT EXISTS idx_images_gps ON images(gpsLatitude, gpsLongitude)');
+
+    // Create albums table
+    await this.db.exec(`
+      CREATE TABLE IF NOT EXISTS albums (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        coverImageId INTEGER,
+        createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        updatedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (coverImageId) REFERENCES images(id) ON DELETE SET NULL
+      )
+    `);
+
+    // Create album_images junction table for many-to-many relationship
+    await this.db.exec(`
+      CREATE TABLE IF NOT EXISTS album_images (
+        albumId INTEGER NOT NULL,
+        imageId INTEGER NOT NULL,
+        addedAt TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (albumId, imageId),
+        FOREIGN KEY (albumId) REFERENCES albums(id) ON DELETE CASCADE,
+        FOREIGN KEY (imageId) REFERENCES images(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create indexes for albums
+    await this.db.exec('CREATE INDEX IF NOT EXISTS idx_albums_name ON albums(name)');
+    await this.db.exec('CREATE INDEX IF NOT EXISTS idx_album_images_album ON album_images(albumId)');
+    await this.db.exec('CREATE INDEX IF NOT EXISTS idx_album_images_image ON album_images(imageId)');
 
     this.initialized = true;
   }
@@ -418,6 +489,229 @@ export class ImageRepository {
     }
 
     await this.db.exec('DELETE FROM images');
+  }
+
+  // ============================================
+  // Album CRUD Methods
+  // ============================================
+
+  /**
+   * Create a new album
+   */
+  async createAlbum(album: Omit<Album, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'>): Promise<number> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    await this.db.exec(`
+      INSERT INTO albums (name, description, coverImageId)
+      VALUES (?, ?, ?)
+    `, [album.name, album.description, album.coverImageId]);
+
+    const result = await this.db.query<{ id: number }>(
+      'SELECT last_insert_rowid() as id'
+    );
+
+    return result[0].id;
+  }
+
+  /**
+   * Get all albums with image counts
+   */
+  async getAlbums(): Promise<Album[]> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const results = await this.db.query<AlbumRecordRaw>(`
+      SELECT 
+        a.id,
+        a.name,
+        a.description,
+        a.coverImageId,
+        a.createdAt,
+        a.updatedAt,
+        COUNT(ai.imageId) as imageCount
+      FROM albums a
+      LEFT JOIN album_images ai ON a.id = ai.albumId
+      GROUP BY a.id
+      ORDER BY a.name
+    `);
+
+    return results.map(raw => this.transformAlbumRecord(raw));
+  }
+
+  /**
+   * Get an album by ID with image count
+   */
+  async getAlbumById(id: number): Promise<Album | null> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const results = await this.db.query<AlbumRecordRaw>(`
+      SELECT 
+        a.id,
+        a.name,
+        a.description,
+        a.coverImageId,
+        a.createdAt,
+        a.updatedAt,
+        COUNT(ai.imageId) as imageCount
+      FROM albums a
+      LEFT JOIN album_images ai ON a.id = ai.albumId
+      WHERE a.id = ?
+      GROUP BY a.id
+    `, [id]);
+
+    return results.length > 0 ? this.transformAlbumRecord(results[0]) : null;
+  }
+
+  /**
+   * Update an album
+   */
+  async updateAlbum(id: number, album: Partial<Omit<Album, 'id' | 'imageCount' | 'createdAt' | 'updatedAt'>>): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (album.name !== undefined) {
+      updates.push('name = ?');
+      params.push(album.name);
+    }
+
+    if (album.description !== undefined) {
+      updates.push('description = ?');
+      params.push(album.description);
+    }
+
+    if (album.coverImageId !== undefined) {
+      updates.push('coverImageId = ?');
+      params.push(album.coverImageId);
+    }
+
+    if (updates.length === 0) {
+      return;
+    }
+
+    updates.push('updatedAt = CURRENT_TIMESTAMP');
+    params.push(id);
+
+    await this.db.exec(`
+      UPDATE albums
+      SET ${updates.join(', ')}
+      WHERE id = ?
+    `, params);
+  }
+
+  /**
+   * Delete an album (removes album and all its image associations)
+   */
+  async deleteAlbum(id: number): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    await this.db.exec('DELETE FROM albums WHERE id = ?', [id]);
+  }
+
+  /**
+   * Add an image to an album
+   */
+  async addImageToAlbum(albumId: number, imageId: number): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    await this.db.exec(`
+      INSERT OR IGNORE INTO album_images (albumId, imageId)
+      VALUES (?, ?)
+    `, [albumId, imageId]);
+  }
+
+  /**
+   * Add multiple images to an album
+   */
+  async addImagesToAlbum(albumId: number, imageIds: number[]): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    await this.db.exec('BEGIN TRANSACTION');
+    
+    try {
+      for (const imageId of imageIds) {
+        await this.addImageToAlbum(albumId, imageId);
+      }
+      await this.db.exec('COMMIT');
+    } catch (error) {
+      await this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /**
+   * Remove an image from an album
+   */
+  async removeImageFromAlbum(albumId: number, imageId: number): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    await this.db.exec(`
+      DELETE FROM album_images
+      WHERE albumId = ? AND imageId = ?
+    `, [albumId, imageId]);
+  }
+
+  /**
+   * Get all images in an album
+   */
+  async getAlbumImages(albumId: number): Promise<ImageRecord[]> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const results = await this.db.query<ImageRecordRaw>(`
+      SELECT i.*
+      FROM images i
+      INNER JOIN album_images ai ON i.id = ai.imageId
+      WHERE ai.albumId = ?
+      ORDER BY ai.addedAt DESC
+    `, [albumId]);
+
+    return results.map(raw => this.transformRecord(raw));
+  }
+
+  /**
+   * Get all albums that contain a specific image
+   */
+  async getImageAlbums(imageId: number): Promise<Album[]> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const results = await this.db.query<AlbumRecordRaw>(`
+      SELECT 
+        a.id,
+        a.name,
+        a.description,
+        a.coverImageId,
+        a.createdAt,
+        a.updatedAt,
+        COUNT(ai2.imageId) as imageCount
+      FROM albums a
+      INNER JOIN album_images ai ON a.id = ai.albumId
+      LEFT JOIN album_images ai2 ON a.id = ai2.albumId
+      WHERE ai.imageId = ?
+      GROUP BY a.id
+      ORDER BY a.name
+    `, [imageId]);
+
+    return results.map(raw => this.transformAlbumRecord(raw));
   }
 
   /**

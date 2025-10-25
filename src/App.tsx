@@ -10,7 +10,7 @@ import { DirectoryPicker } from './components/DirectoryPicker'
 import type { ImageRecord } from './lib/image-repository'
 import { ImageRepositoryProvider, useImageRepository } from './contexts/ImageRepositoryContext'
 import { DirectoryProvider, useDirectory } from './contexts/DirectoryContext'
-import { enumerateImageMetadata } from './lib/utils'
+import { importImages } from './lib/import'
 
 type ViewType = 'timeline' | 'albums' | 'places' | 'people' | 'memories'
 
@@ -44,7 +44,7 @@ function AppContent() {
     setIsImporting(true)
     try {
       // Import all images from the directory
-      await enumerateImageMetadata(handle, { repository })
+      await importImages(handle, { repository })
       
       // Reload photos from repository
       const images = await repository.getImages()
@@ -76,7 +76,6 @@ function AppContent() {
   const handleClose = () => {
     setSelectedPhoto(null)
     if (selectedPhotoUrl) {
-      URL.revokeObjectURL(selectedPhotoUrl)
       setSelectedPhotoUrl(null)
     }
   }
