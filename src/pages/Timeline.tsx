@@ -1,14 +1,15 @@
+import type { ImageFileMetadata } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 
 interface TimelineProps {
-  photos: File[]
+  photos: ImageFileMetadata[]
 }
 
 const Timeline = ({ photos }: TimelineProps) => {
   const [imageUrls, setImageUrls] = useState<string[]>([])
 
   useEffect(() => {
-    const urls = photos.map(file => URL.createObjectURL(file))
+    const urls = photos.map(file => URL.createObjectURL(file.file))
     setImageUrls(urls)
 
     return () => {

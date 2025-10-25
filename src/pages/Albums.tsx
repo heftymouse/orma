@@ -1,5 +1,7 @@
+import type { ImageFileMetadata } from "@/lib/utils"
+
 interface AlbumsProps {
-  photos: File[]
+  photos: ImageFileMetadata[]
 }
 
 const Albums = ({ photos }: AlbumsProps) => {

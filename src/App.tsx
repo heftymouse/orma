@@ -5,14 +5,15 @@ import Albums from './pages/Albums'
 import Places from './pages/Places'
 import People from './pages/People'
 import Memories from './pages/Memories'
+import type { ImageFileMetadata } from './lib/utils'
 
 type ViewType = 'timeline' | 'albums' | 'places' | 'people' | 'memories'
 
 function App() {
   const [currentView, setCurrentView] = useState<ViewType>('timeline')
-  const [photos, setPhotos] = useState<File[]>([])
+  const [photos, setPhotos] = useState<ImageFileMetadata[]>([])
 
-  const handleImport = (files: File[]) => {
+  const handleImport = (files: ImageFileMetadata[]) => {
     console.log('Importing files:', files)
     setPhotos(prev => [...prev, ...files])
   }

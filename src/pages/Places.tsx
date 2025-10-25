@@ -1,5 +1,7 @@
+import type { ImageFileMetadata } from "@/lib/utils"
+
 interface PlacesProps {
-  photos: File[]
+  photos: ImageFileMetadata[]
 }
 
 const Places = ({ photos }: PlacesProps) => {

@@ -1,13 +1,14 @@
 import { Upload, Clock, FolderOpen, MapPin, Users, Sparkles, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { enumerateImageMetadata, type ImageFileMetadata } from '@/lib/utils'
 
 type ViewType = 'timeline' | 'albums' | 'places' | 'people' | 'memories'
 
 interface NavbarProps {
   activeView: ViewType
   onNavigate: (view: ViewType) => void
-  onImport: (files: File[]) => void
+  onImport: (files: ImageFileMetadata[]) => void
 }
 
 const Navbar = ({ activeView, onNavigate, onImport }: NavbarProps) => {
@@ -21,19 +22,24 @@ const Navbar = ({ activeView, onNavigate, onImport }: NavbarProps) => {
     { id: 'memories' as const, label: 'Memories', icon: Sparkles },
   ]
 
-  const handleImportClick = () => {
-    const input = document.createElement('input')
-    input.type = 'file'
-    input.multiple = true
-    input.accept = 'image/*'
-    input.onchange = (e) => {
-      const target = e.target as HTMLInputElement
-      if (target.files) {
-        const files = Array.from(target.files)
-        onImport(files)
-      }
-    }
-    input.click()
+  const handleImportClick = async () => {
+    // const input = document.createElement('input')
+    // input.type = 'file'
+    // input.multiple = true
+    // input.accept = 'image/*'
+    // input.onchange = (e) => {
+    //   const target = e.target as HTMLInputElement
+    //   if (target.files) {
+    //     const files = Array.from(target.files)
+    //     onImport(files)
+    //   }
+    // }
+    // input.click()
+
+    // @ts-ignore
+    const dir = await window.showDirectoryPicker()
+    const imagesWithMetadata = await enumerateImageMetadata(dir)
+    onImport(imagesWithMetadata)
   }
 
   const handleNavClick = (id: ViewType) => {
