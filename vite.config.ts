@@ -23,7 +23,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@sqlite.org/sqlite-wasm'],
+    exclude: ['@sqlite.org/sqlite-wasm', 'onnxruntime-web'],
   },
   build: {
     rollupOptions: {
