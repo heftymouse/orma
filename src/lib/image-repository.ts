@@ -319,6 +319,30 @@ export class ImageRepository {
   }
 
   /**
+   * Get all images taken in a given month (across all years).
+   * monthIndex is 0-based (0 = January, 11 = December)
+   */
+  async getImagesByMonth(monthIndex: number): Promise<ImageRecord[] | null> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    // SQLite strftime %m returns month as '01'..'12'
+    const monthStr = String(monthIndex + 1).padStart(2, '0');
+
+    const sql = `
+      SELECT * FROM images
+      WHERE dateTimeOriginal IS NOT NULL
+        AND strftime('%m', dateTimeOriginal) = ?
+      ORDER BY dateTimeOriginal DESC
+    `;
+
+    const rawResults = await this.db.query<ImageRecordRaw>(sql, [monthStr]);
+
+    return rawResults.length > 0 ? rawResults.map(raw => this.transformRecord(raw)) : null;
+  }
+
+  /**
    * Get an image by path
    */
   async getImageByPath(path: string): Promise<ImageRecord | null> {
