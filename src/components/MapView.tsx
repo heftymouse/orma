@@ -98,23 +98,40 @@ export default function MapView({ photos, onBoundsChange }: MapViewProps) {
       const lat = toDecimal(photo.gpsLatitude as any)
       const lon = toDecimal(photo.gpsLongitude as any)
       if (lat == null || lon == null) continue
-
       const marker = L.marker([lat, lon])
-      const popup = document.createElement('div')
 
-      const img = document.createElement('img')
-      img.style.width = '200px'
-      img.style.height = 'auto'
-      img.alt = photo.filename ?? 'Photo'
-      popup.appendChild(img)
+      // create a small circular image element for the tooltip (shown on hover)
+  const tooltipEl = document.createElement('div')
+  // Make the tooltip element a circular container and clip its contents
+  tooltipEl.style.display = 'block'
+  tooltipEl.style.width = '80px'
+  tooltipEl.style.height = '80px'
+  // tooltipEl.style.borderRadius = '50%'
+  tooltipEl.style.overflow = 'hidden'
+  tooltipEl.style.background = 'transparent'
+  // add the white ring on the container itself
+  tooltipEl.style.border = '2px solid rgba(255,255,255,0.9)'
 
-      const title = document.createElement('div')
-      title.style.marginTop = '6px'
-      title.style.fontWeight = '600'
-      title.textContent = photo.filename ?? 'Photo'
-      popup.appendChild(title)
+  const img = document.createElement('img')
+  // make the image fill the circular container; no background so we don't see a square
+  img.style.width = '100%'
+  img.style.height = '100%'
+  img.style.objectFit = 'cover'
+  img.alt = photo.filename ?? 'Photo'
 
-      marker.bindPopup(popup)
+  // set a tiny transparent SVG as a safe placeholder so the element renders at the correct size
+  img.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"></svg>'
+
+  tooltipEl.appendChild(img)
+
+      // bind tooltip (default Leaflet behavior: show on hover)
+      // use a custom class so we can style/hide tooltip background
+      marker.bindTooltip(tooltipEl as any, {
+        direction: 'top',
+        offset: [0, -10],
+        className: 'leaflet-photo-tooltip',
+      })
+
       markers.addLayer(marker)
       addedMarkers.push(marker)
 
