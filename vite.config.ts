@@ -18,8 +18,24 @@ export default defineConfig({
       'Cross-Origin-Resource-Policy': 'cross-origin',
     },
     port: 5174,
+    mimeTypes: {
+      'application/wasm': ['wasm']
+    },
   },
   optimizeDeps: {
     exclude: ['@sqlite.org/sqlite-wasm'],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Ensure .wasm files are served with correct MIME type in production build as well
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name && assetInfo.name.endsWith('.wasm')) {
+            return 'assets/[name][extname]'
+          }
+          return 'assets/[name]-[hash][extname]'
+        },
+      },
+    },
   },
 })
