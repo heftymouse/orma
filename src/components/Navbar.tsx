@@ -1,4 +1,4 @@
-import { Clock, FolderOpen, MapPin, Users, Sparkles, Menu, X } from 'lucide-react'
+import { Clock, FolderOpen, MapPin, Users, Sparkles, Menu, X, LogOut, Upload } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import type { ImageRepository } from '@/lib/image-repository'
@@ -25,6 +25,16 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
 
   const handleImportClick = async () => {
     onChangeDirectory()
+  }
+
+  const handleEjectClick = () => {
+    // TODO: Implement eject functionality
+    console.log('Eject clicked')
+  }
+
+  const handleImport = () => {
+    // TODO: Implement import functionality
+    console.log('Import clicked')
   }
 
   const handleNavClick = (id: ViewType) => {
@@ -55,10 +65,19 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
           })}
         </div>
 
-        <div>
-          <Button onClick={handleImportClick} variant="default" size="default">
+        <div className="flex items-center gap-2">
+          <Button onClick={handleImportClick} variant="outline" size="default">
             <FolderOpen size={16} />
             <span>Change Folder</span>
+          </Button>
+          <div className='w-0 mx-2 h-6 border-l border-l-border' />
+          <Button onClick={handleImport} variant="outline" size="default">
+            <Upload size={16} />
+            <span>Import</span>
+          </Button>
+          <Button onClick={handleEjectClick} variant="default" size="default">
+            <LogOut size={16} />
+            <span>Eject</span>
           </Button>
         </div>
       </div>
@@ -68,7 +87,13 @@ const Navbar = ({ activeView, onNavigate, onChangeDirectory }: NavbarProps) => {
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <h1 className="text-lg font-semibold">Photo Library</h1>
           <div className="flex items-center gap-2">
-            <Button onClick={handleImportClick} variant="default" size="icon">
+            <Button onClick={handleEjectClick} variant="default" size="icon">
+              <LogOut size={16} />
+            </Button>
+            <Button onClick={handleImport} variant="outline" size="icon">
+              <Upload size={16} />
+            </Button>
+            <Button onClick={handleImportClick} variant="outline" size="icon">
               <FolderOpen size={16} />
             </Button>
             <Button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} variant="ghost" size="icon">

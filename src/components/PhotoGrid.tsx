@@ -3,7 +3,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useDirectory } from '@/contexts/DirectoryContext'
 import { useImageRepository } from '@/contexts/ImageRepositoryContext'
 import { Button } from '@/components/ui/button'
-import { Check, Plus, FolderPlus, X, ListChecks, Minus } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Plus, FolderPlus, X, ListChecks } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface PhotoGridProps {
@@ -307,25 +308,11 @@ const PhotoGrid = ({
                   </div>
                   
                   {/* Month selection checkbox */}
-                  <button
-                    onClick={() => handleMonthSelect(monthPhotos)}
-                    className="p-2 hover:bg-muted rounded-md transition-colors"
-                  >
-                    <div className={cn(
-                      "w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all",
-                      allMonthSelected 
-                        ? "bg-blue-500 border-blue-500" 
-                        : someMonthSelected
-                        ? "bg-blue-500/50 border-blue-500"
-                        : "border-gray-300"
-                    )}>
-                      {allMonthSelected && <Check size={14} className="text-white" />}
-                      {someMonthSelected && (
-                        <Minus size={16} />
-                        // <div className="w-2 h-2 bg-white rounded-sm" />
-                      )}
-                    </div>
-                  </button>
+                  <Checkbox
+                    checked={allMonthSelected ? true : someMonthSelected ? "indeterminate" : false}
+                    onCheckedChange={() => handleMonthSelect(monthPhotos)}
+                    className="size-6"
+                  />
                 </div>
                 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
@@ -370,14 +357,16 @@ const PhotoGrid = ({
                           )}
                           onClick={(e) => handleCheckboxClick(photo.id!, e)}
                         >
-                          <div className={cn(
-                            "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
-                            isSelected 
-                              ? "bg-blue-500 border-blue-500" 
-                              : "bg-white/80 border-white"
-                          )}>
-                            {isSelected && <Check size={14} className="text-white" />}
-                          </div>
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => handlePhotoSelect(photo.id!)}
+                            className={cn(
+                              "size-6 border-2 transition-all",
+                              isSelected 
+                                ? "bg-blue-500 border-blue-500" 
+                                : "bg-white/80 border-white"
+                            )}
+                          />
                         </div>
                       </div>
                     )
