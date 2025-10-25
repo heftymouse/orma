@@ -1,10 +1,4 @@
-import type { ImageRecord } from "@/lib/image-repository"
-
-interface MemoriesProps {
-  photos: ImageRecord[]
-}
-
-const Memories = ({ photos }: MemoriesProps) => {
+const Memories = () => {
   return (
     <div className="container mx-auto">
       <h1 className="text-2xl font-semibold mb-2">Memories</h1>

@@ -214,6 +214,18 @@ export class ImageRepository {
     await this.db.exec('CREATE INDEX IF NOT EXISTS idx_album_images_album ON album_images(albumId)');
     await this.db.exec('CREATE INDEX IF NOT EXISTS idx_album_images_image ON album_images(imageId)');
 
+    // Create Favourites album if it doesn't exist
+    const existingFavourites = await this.db.query<{ id: number }>(`
+      SELECT id FROM albums WHERE name = 'Favourites'
+    `);
+
+    if (existingFavourites.length === 0) {
+      await this.db.exec(`
+        INSERT INTO albums (name, description)
+        VALUES ('Favourites', 'Your favourite photos')
+      `);
+    }
+
     this.initialized = true;
   }
 
@@ -481,6 +493,38 @@ export class ImageRepository {
   }
 
   /**
+   * Delete an image by ID
+   */
+  async deleteImageById(id: number): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    await this.db.exec('DELETE FROM images WHERE id = ?', [id]);
+  }
+
+  /**
+   * Delete multiple images by IDs
+   */
+  async deleteImagesByIds(ids: number[]): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    await this.db.exec('BEGIN TRANSACTION');
+    
+    try {
+      for (const id of ids) {
+        await this.deleteImageById(id);
+      }
+      await this.db.exec('COMMIT');
+    } catch (error) {
+      await this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /**
    * Delete all images
    */
   async deleteAll(): Promise<void> {
@@ -712,6 +756,128 @@ export class ImageRepository {
     `, [imageId]);
 
     return results.map(raw => this.transformAlbumRecord(raw));
+  }
+
+  /**
+   * Get the Favourites album
+   */
+  async getFavouritesAlbum(): Promise<Album | null> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const results = await this.db.query<AlbumRecordRaw>(`
+      SELECT 
+        a.id,
+        a.name,
+        a.description,
+        a.coverImageId,
+        a.createdAt,
+        a.updatedAt,
+        COUNT(ai.imageId) as imageCount
+      FROM albums a
+      LEFT JOIN album_images ai ON a.id = ai.albumId
+      WHERE a.name = 'Favourites'
+      GROUP BY a.id
+    `);
+
+    return results.length > 0 ? this.transformAlbumRecord(results[0]) : null;
+  }
+
+  /**
+   * Check if an image is in the Favourites album
+   */
+  async isImageFavourite(imageId: number): Promise<boolean> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const favouritesAlbum = await this.getFavouritesAlbum();
+    if (!favouritesAlbum?.id) return false;
+
+    const results = await this.db.query<{ count: number }>(`
+      SELECT COUNT(*) as count
+      FROM album_images
+      WHERE albumId = ? AND imageId = ?
+    `, [favouritesAlbum.id, imageId]);
+
+    return results[0].count > 0;
+  }
+
+  /**
+   * Add images to Favourites album
+   */
+  async addToFavourites(imageIds: number[]): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const favouritesAlbum = await this.getFavouritesAlbum();
+    if (!favouritesAlbum?.id) {
+      throw new Error('Favourites album not found');
+    }
+
+    await this.addImagesToAlbum(favouritesAlbum.id, imageIds);
+  }
+
+  /**
+   * Remove images from Favourites album
+   */
+  async removeFromFavourites(imageIds: number[]): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const favouritesAlbum = await this.getFavouritesAlbum();
+    if (!favouritesAlbum?.id) {
+      throw new Error('Favourites album not found');
+    }
+
+    await this.db.exec('BEGIN TRANSACTION');
+    
+    try {
+      for (const imageId of imageIds) {
+        await this.removeImageFromAlbum(favouritesAlbum.id, imageId);
+      }
+      await this.db.exec('COMMIT');
+    } catch (error) {
+      await this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /**
+   * Toggle favourite status for images
+   */
+  async toggleFavourites(imageIds: number[]): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Repository not initialized. Call init() first.');
+    }
+
+    const favouritesAlbum = await this.getFavouritesAlbum();
+    if (!favouritesAlbum?.id) {
+      throw new Error('Favourites album not found');
+    }
+
+    // Check which images are already favourites
+    const toAdd: number[] = [];
+    const toRemove: number[] = [];
+
+    for (const imageId of imageIds) {
+      const isFav = await this.isImageFavourite(imageId);
+      if (isFav) {
+        toRemove.push(imageId);
+      } else {
+        toAdd.push(imageId);
+      }
+    }
+
+    if (toAdd.length > 0) {
+      await this.addToFavourites(toAdd);
+    }
+    if (toRemove.length > 0) {
+      await this.removeFromFavourites(toRemove);
+    }
   }
 
   /**

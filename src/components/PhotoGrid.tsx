@@ -4,7 +4,7 @@ import { useDirectory } from '@/contexts/DirectoryContext'
 import { useImageRepository } from '@/contexts/ImageRepositoryContext'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Plus, FolderPlus, X, ListChecks } from 'lucide-react'
+import { Plus, FolderPlus, X, ListChecks, Star, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ImageLightbox from './ImageLightbox'
 
@@ -13,7 +13,7 @@ interface PhotoGridProps {
   emptyMessage?: string
   showCount?: boolean
   countLabel?: string
-  actions: Record<string, () => void>
+  actions?: Record<string, (selectedPhotoIds: number[]) => void | Promise<void>>
 }
 
 interface GroupedPhotos {
@@ -28,7 +28,7 @@ const PhotoGrid = ({
   emptyMessage = "No photos yet. Click Import to add photos.",
   showCount = true,
   countLabel = "photo",
-  actions
+  actions = {}
 }: PhotoGridProps) => {
   const [imageUrls, setImageUrls] = useState<Map<number, string>>(new Map())
   const [selectedPhotos, setSelectedPhotos] = useState<Set<number>>(new Set())
@@ -39,6 +39,8 @@ const PhotoGrid = ({
   const [newAlbumName, setNewAlbumName] = useState('')
   const [selectedPhoto, setSelectedPhoto] = useState<ImageRecord | null>(null)
   const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [favouritePhotoIds, setFavouritePhotoIds] = useState<Set<number>>(new Set())
 
   const { createBlobUrl } = useDirectory()
   const { repository } = useImageRepository()
@@ -117,6 +119,26 @@ const PhotoGrid = ({
     loadAlbums()
   }, [repository])
 
+  // Load favourite photo IDs
+  useEffect(() => {
+    const loadFavourites = async () => {
+      if (!repository) return
+      
+      try {
+        const favouritesAlbum = await repository.getFavouritesAlbum()
+        if (favouritesAlbum?.id) {
+          const favouritePhotos = await repository.getAlbumImages(favouritesAlbum.id)
+          const favIds = new Set(favouritePhotos.map(p => p.id).filter((id): id is number => id !== undefined))
+          setFavouritePhotoIds(favIds)
+        }
+      } catch (error) {
+        console.error('Failed to load favourites:', error)
+      }
+    }
+
+    loadFavourites()
+  }, [repository, photos]) // Re-load when photos change
+
   const handlePhotoClick = (photo: ImageRecord, url: string) => {
     if (isSelectionMode) {
       handlePhotoSelect(photo.id!)
@@ -124,17 +146,6 @@ const PhotoGrid = ({
       // Open the photo in lightbox
       setSelectedPhoto(photo)
       setSelectedPhotoUrl(url)
-    }
-  }
-
-  const handleCheckboxClick = (photoId: number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    if (!isSelectionMode) {
-      // Enter selection mode and select this photo
-      setIsSelectionMode(true)
-      setSelectedPhotos(new Set([photoId]))
-    } else {
-      handlePhotoSelect(photoId)
     }
   }
 
@@ -248,6 +259,64 @@ const PhotoGrid = ({
     }
   }
 
+  // Global Actions
+  const handleDeletePhotos = async () => {
+    if (!repository || selectedPhotos.size === 0) return
+
+    const ok = window.confirm(`Delete ${selectedPhotos.size} photo${selectedPhotos.size !== 1 ? 's' : ''}? This cannot be undone.`)
+    if (!ok) return
+
+    try {
+      setIsProcessing(true)
+      await repository.deleteImagesByIds(Array.from(selectedPhotos))
+      exitSelectionMode()
+      // Parent component should refetch photos
+      window.location.reload() // Simple reload for now
+    } catch (error) {
+      console.error('Failed to delete photos:', error)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleToggleFavourites = async () => {
+    if (!repository || selectedPhotos.size === 0) return
+
+    try {
+      setIsProcessing(true)
+      
+      // Check if all selected photos are favourites
+      const selectedArray = Array.from(selectedPhotos)
+      const allAreFavourites = selectedArray.every(id => favouritePhotoIds.has(id))
+      
+      if (allAreFavourites) {
+        // Remove all from favourites
+        await repository.removeFromFavourites(selectedArray)
+      } else {
+        // Add only non-favourites to favourites
+        const nonFavourites = selectedArray.filter(id => !favouritePhotoIds.has(id))
+        if (nonFavourites.length > 0) {
+          await repository.addToFavourites(nonFavourites)
+        }
+      }
+      
+      // Reload favourites to update the button text
+      const favouritesAlbum = await repository.getFavouritesAlbum()
+      if (favouritesAlbum?.id) {
+        const favouritePhotos = await repository.getAlbumImages(favouritesAlbum.id)
+        const favIds = new Set(favouritePhotos.map(p => p.id).filter((id): id is number => id !== undefined))
+        setFavouritePhotoIds(favIds)
+      }
+      
+      exitSelectionMode()
+      console.log(`Updated favourites for ${selectedPhotos.size} photo(s)`)
+    } catch (error) {
+      console.error('Failed to toggle favourites:', error)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   const hasPhotos = Object.keys(groupedPhotos).length > 0
 
   return (
@@ -275,22 +344,55 @@ const PhotoGrid = ({
             </div>
             <div className='flex items-center gap-2'>
               {selectedPhotos.size > 0 && (
-                <div className="flex items-center gap-2">
+                <>
+                  {/* Custom actions passed from parent */}
+                  {Object.entries(actions).map(([name, fn]) => (
+                    <Button 
+                      key={name}
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => fn(Array.from(selectedPhotos))}
+                      disabled={isProcessing}
+                    >
+                      {name}
+                    </Button>
+                  ))}
+                  <div className='w-0 mx-2 h-6 border-l border-l-blue-200' />
+                  {/* Global actions */}
                   <Button
-                    variant="default"
+                    variant="outline"
                     size="sm"
                     onClick={() => setShowAlbumDialog(true)}
+                    disabled={isProcessing}
                   >
                     <FolderPlus size={16} />
                     Add to Album
                   </Button>
-                </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleToggleFavourites}
+                    disabled={isProcessing}
+                  >
+                    <Star size={16} />
+                    {(() => {
+                      // Check if all selected photos are favourites
+                      const selectedArray = Array.from(selectedPhotos)
+                      const allAreFavourites = selectedArray.every(id => favouritePhotoIds.has(id))
+                      return allAreFavourites ? 'Unfavourite' : 'Favourite'
+                    })()}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleDeletePhotos}
+                    disabled={isProcessing}
+                  >
+                    <Trash2 size={16} />
+                    Delete
+                  </Button>
+                </>
               )}
-              {
-                Object.entries(actions).map(([name, fn]) => (
-                  <Button variant="secondary" onClick={fn}>{name}</Button>
-                ))
-              }
               <Button variant="ghost" size="sm" onClick={exitSelectionMode}>
                 <X size={16} />
               </Button>
@@ -369,13 +471,21 @@ const PhotoGrid = ({
                             "absolute top-2 right-2 transition-opacity duration-200",
                             isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                           )}
-                          onClick={(e) => handleCheckboxClick(photo.id!, e)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!isSelectionMode) {
+                              // Enter selection mode and select this photo
+                              setIsSelectionMode(true)
+                              setSelectedPhotos(new Set([photo.id!]))
+                            } else {
+                              handlePhotoSelect(photo.id!)
+                            }
+                          }}
                         >
                           <Checkbox
                             checked={isSelected}
-                            onCheckedChange={() => handlePhotoSelect(photo.id!)}
                             className={cn(
-                              "size-6 border-2 transition-all",
+                              "size-6 border-2 transition-all pointer-events-none",
                               isSelected 
                                 ? "bg-blue-500 border-blue-500" 
                                 : "bg-white/80 border-white"

@@ -221,13 +221,13 @@ function AppContent() {
       case 'timeline':
         return <Timeline photos={photos} />
       case 'albums':
-        return <Albums photos={photos} />
+        return <Albums />
       case 'places':
         return <Places photos={photos} />
       case 'people':
         return <People photos={photos} />
       case 'memories':
-        return <Memories photos={photos} />
+        return <Memories />
       default:
         return <Timeline photos={photos} />
     }

@@ -4,6 +4,7 @@ import type { Album, ImageRecord } from "@/lib/image-repository"
 import { useEffect, useState } from "react"
 import PhotoGrid from "@/components/PhotoGrid"
 import { Button } from "@/components/ui/button"
+import { Check } from "lucide-react"
 
 const Albums = () => {
   const { repository } = useImageRepository()
@@ -98,6 +99,23 @@ const Albums = () => {
     setAlbumPhotos([])
   }
 
+  // Handler for removing photos from the current album
+  const handleRemoveFromAlbum = async (photoIds: number[]) => {
+    if (!repository || !selectedAlbum?.id || photoIds.length === 0) return
+
+    try {
+      for (const photoId of photoIds) {
+        await repository.removeImageFromAlbum(selectedAlbum.id, photoId)
+      }
+      // Reload album photos
+      const imgs = await repository.getAlbumImages(selectedAlbum.id)
+      setAlbumPhotos(imgs)
+      console.log(`Removed ${photoIds.length} photo(s) from album`)
+    } catch (error) {
+      console.error('Failed to remove photos from album:', error)
+    }
+  }
+
   // If an album is selected, show its photos in PhotoGrid
   if (selectedAlbum) {
     return (
@@ -119,7 +137,12 @@ const Albums = () => {
         {loadingPhotos ? (
           <div className="text-center py-12 text-gray-500">Loading album...</div>
         ) : (
-          <PhotoGrid photos={albumPhotos} actions={{}} />
+          <PhotoGrid 
+            photos={albumPhotos}
+            actions={{
+              'Remove from Album': handleRemoveFromAlbum
+            }}
+          />
         )}
       </div>
     )
@@ -215,7 +238,7 @@ const Albums = () => {
               {isSelectionMode && (
                 <div className="absolute z-10 ml-2 mt-2">
                   <div className={isSelected ? "w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs" : "w-5 h-5 rounded-full bg-white border flex items-center justify-center text-xs"}>
-                    {isSelected ? '✓' : ''}
+                    {isSelected && <Check size={12} />}
                   </div>
                 </div>
               )}

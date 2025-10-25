@@ -13,7 +13,6 @@ const Timeline = ({ photos }: TimelineProps) => {
         photos={photos} 
         emptyMessage="No photos yet. Click Import to add photos."
         countLabel="photo"
-        actions={{}}
       />
     </div>
   )
