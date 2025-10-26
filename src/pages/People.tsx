@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import type { ImageRecord } from '@/lib/image-repository'
 import { useDirectory } from '@/contexts/DirectoryContext'
-import { loadModel, detectFaces } from '@/lib/faceDetection'
+import { loadModel, detectFaces, type FaceDetection } from '@/lib/faceDetection'
+import PhotoGrid from '@/components/PhotoGrid'
 
 interface PeopleProps {
   photos: ImageRecord[]
@@ -10,7 +11,7 @@ interface PeopleProps {
 const People = ({ photos }: PeopleProps) => {
   const { createBlobUrl } = useDirectory()
   const [photoUrls, setPhotoUrls] = useState<Record<number, string>>({})
-  const [faceDetections, setFaceDetections] = useState<Map<number, any[]>>(new Map())
+  const [faceDetections, setFaceDetections] = useState<Map<number, FaceDetection[]>>(new Map())
   const [modelLoaded, setModelLoaded] = useState(false)
 
   const detecting = useRef(false)
@@ -37,6 +38,8 @@ const People = ({ photos }: PeopleProps) => {
     detecting.current = true
 
     const detectAllFaces = async () => {
+      const newDetections = new Map<number, FaceDetection[]>()
+      
       for (const photo of photos) {
         if (!photo.id) continue
         const url = photoUrls[photo.id]
@@ -52,51 +55,28 @@ const People = ({ photos }: PeopleProps) => {
         })
 
         const detections = await detectFaces(img)
-        setFaceDetections((prev) => {
-          const newMap = new Map(prev)
-          newMap.set(photo.id!, detections)
-          return newMap
-        })
+        newDetections.set(photo.id, detections)
       }
+      
+      // Update state once with all detections
+      setFaceDetections(newDetections)
       detecting.current = false
     }
     detectAllFaces()
   }, [modelLoaded, photos, photoUrls])
 
   const photosWithFaces = photos.filter(
-    (photo) => faceDetections.get(photo.id ?? -1)?.length > 0
+    (photo) => {
+      const detections = faceDetections.get(photo.id ?? -1)
+      return detections && detections.length > 0
+    }
   )
 
   return (
     <div className="container mx-auto py-6">
       <h1 className="text-2xl font-semibold mb-4">People</h1>
       <p className="text-sm text-gray-600 mb-6">Photos with detected faces</p>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {photosWithFaces.length === 0 && (
-          <p className="text-gray-500 col-span-full text-center">No photos with faces detected.</p>
-        )}
-        {photosWithFaces.map((photo) => {
-          const photoUrl = photoUrls[photo.id ?? -1] || ''
-          const detections = faceDetections.get(photo.id ?? -1) ?? []
-
-          return (
-            <div key={photo.id} className="relative rounded-md overflow-hidden border shadow-sm">
-              {photoUrl ? (
-                <img
-                  src={photoUrl}
-                  alt={photo.filename}
-                  className="w-full h-auto object-cover"
-                />
-              ) : (
-                <div className="w-full h-48 bg-gray-200 flex items-center justify-center text-gray-400">
-                  Loading...
-                </div>
-              )}
-              {/* Here you can add canvas overlays or divs to render bounding boxes using detection output */}
-            </div>
-          )
-        })}
-      </div>
+      <PhotoGrid photos={photosWithFaces} emptyMessage='No photos with faces detected.' />
     </div>
   )
 }
