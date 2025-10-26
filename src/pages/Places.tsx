@@ -49,6 +49,7 @@ const Places = ({ photos }: PlacesProps) => {
             emptyMessage="No photos in the current map view"
             showCount={true}
             countLabel="photo"
+            topPaddingLarge={true}
           />
         </div>
       </div>

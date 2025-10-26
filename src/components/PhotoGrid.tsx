@@ -14,6 +14,7 @@ interface PhotoGridProps {
   showCount?: boolean
   countLabel?: string
   actions?: Record<string, (selectedPhotoIds: number[]) => void | Promise<void>>
+  topPaddingLarge?: boolean
 }
 
 interface GroupedPhotos {
@@ -28,7 +29,8 @@ const PhotoGrid = ({
   emptyMessage = "No photos yet. Click Import to add photos.",
   showCount = true,
   countLabel = "photo",
-  actions = {}
+  actions = {},
+  topPaddingLarge = true
 }: PhotoGridProps) => {
   const [imageUrls, setImageUrls] = useState<Map<number, string>>(new Map())
   // Keep a local copy of photos for view updates (e.g., when unfavouriting while viewing favourites)
@@ -653,7 +655,7 @@ const PhotoGrid = ({
 
               return (
                 <div key={monthKey} className="space-y-4">
-                  <div className="sticky top-0 z-10 border-b pb-2 flex items-center justify-between">
+                  <div className="bg-background sticky top-0 z-10 border-b pb-2 flex items-center justify-between">
                     <div>
                       <h2 className="text-lg font-semibold text-foreground">{monthLabel}</h2>
                       <p className="text-sm text-muted-foreground">
