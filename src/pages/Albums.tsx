@@ -38,6 +38,73 @@ const Albums = () => {
     return () => { mounted = false }
   }, [repository])
 
+  // Listen for favourites updates from other components (PhotoGrid) and refresh current album if needed
+  useEffect(() => {
+    const handler = async () => {
+      try {
+        if (!repository) return
+
+        // Reload albums with fresh cover URLs
+        await loadAlbumsWithCovers()
+
+        // If currently viewing the favourites album, reload its photos and update counts
+        if (selectedAlbum && favouritesAlbumId && selectedAlbum.id === favouritesAlbumId) {
+          const imgs = await repository.getAlbumImages(selectedAlbum.id)
+          setAlbumPhotos(imgs)
+          // update the selectedAlbum and albums counts
+          setSelectedAlbum(prev => prev ? { ...prev, imageCount: imgs.length } : prev)
+          setAlbums(prev => prev.map(a => a.id === selectedAlbum.id ? { ...a, imageCount: imgs.length } : a))
+        }
+      } catch (err) {
+        console.warn('Failed to handle favourites-updated event', err)
+      }
+    }
+
+    window.addEventListener('favourites-updated', handler as EventListener)
+    return () => window.removeEventListener('favourites-updated', handler as EventListener)
+  }, [repository, selectedAlbum, favouritesAlbumId])
+
+  // Helper: load albums and attach coverUrl where possible. Revoke previous coverUrls.
+  const loadAlbumsWithCovers = async () => {
+    if (!repository) return
+    try {
+      const list = await repository.getAlbums()
+
+      const enhanced = await Promise.all(list.map(async (alb) => {
+        const out: AlbumWithCover = { ...alb, coverUrl: null }
+        try {
+          let coverImage: ImageRecord | null = null
+          if (alb.coverImageId) {
+            coverImage = await repository.getImageById(alb.coverImageId)
+          }
+          if (!coverImage && alb.id) {
+            const imgs = await repository.getAlbumImages(alb.id)
+            if (imgs && imgs.length > 0) coverImage = imgs[0]
+          }
+          if (coverImage && directoryHandle) {
+            const url = await createBlobUrl(coverImage.path)
+            out.coverUrl = url
+          }
+        } catch (err) {
+          console.warn('Failed to load album cover for', alb.name, err)
+        }
+        return out
+      }))
+
+      // Revoke previous cover URLs to avoid leaking blobs
+      setAlbums(prev => {
+        prev.forEach(a => {
+          if ((a as AlbumWithCover).coverUrl) {
+            try { URL.revokeObjectURL((a as AlbumWithCover).coverUrl!) } catch {}
+          }
+        })
+        return enhanced
+      })
+    } catch (err) {
+      console.error('Failed to load albums with covers:', err)
+    }
+  }
+
   // Ensure favourites album is shown first (top-left) in the grid
   useEffect(() => {
     if (favouritesAlbumId == null || albums.length === 0) return
@@ -145,9 +212,34 @@ const Albums = () => {
       // Reload album photos
       const imgs = await repository.getAlbumImages(selectedAlbum.id)
       setAlbumPhotos(imgs)
+
+      // Update album counts in the albums list and the selectedAlbum state so the UI stays in sync
+      setAlbums(prev => prev.map(a => a.id === selectedAlbum.id ? { ...a, imageCount: imgs.length } : a))
+      // If the album's cover image was removed, ensure the UI shows the next image (or none)
+      setSelectedAlbum(prev => {
+        if (!prev) return prev
+        // If the previous coverImageId was one of the removed ids, pick the next available image
+        const removedSet = new Set(photoIds)
+        const currentCoverId = (prev as Album).coverImageId
+        let newCoverId = currentCoverId
+        if (currentCoverId && removedSet.has(currentCoverId)) {
+          newCoverId = imgs && imgs.length > 0 ? imgs[0].id : undefined
+        }
+        // Keep imageCount updated and update coverImageId if changed
+        const updated: Album = { ...prev, imageCount: imgs.length, coverImageId: newCoverId ?? undefined }
+        return updated
+      })
+
       console.log(`Removed ${photoIds.length} photo(s) from album`)
     } catch (error) {
       console.error('Failed to remove photos from album:', error)
+    }
+    
+    // Refresh albums' cover URLs/counts so the grid updates (and cover swaps to next image if needed)
+    try {
+      await loadAlbumsWithCovers()
+    } catch (err) {
+      console.warn('Failed to refresh album covers after removal', err)
     }
   }
 

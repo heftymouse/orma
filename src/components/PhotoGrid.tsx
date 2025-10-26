@@ -31,6 +31,8 @@ const PhotoGrid = ({
   actions = {}
 }: PhotoGridProps) => {
   const [imageUrls, setImageUrls] = useState<Map<number, string>>(new Map())
+  // Keep a local copy of photos for view updates (e.g., when unfavouriting while viewing favourites)
+  const [displayedPhotos, setDisplayedPhotos] = useState<ImageRecord[]>(photos)
   const [selectedPhotos, setSelectedPhotos] = useState<Set<number>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [albums, setAlbums] = useState<Album[]>([])
@@ -62,10 +64,13 @@ const PhotoGrid = ({
   const { createBlobUrl } = useDirectory()
   const { repository } = useImageRepository()
 
-  // Sort photos by date and group by month
+  // Dispatch event name for favourites updates
+  const FAV_EVENT = 'favourites-updated'
+
+  // Sort displayedPhotos by date and group by month
   const groupedPhotos = useMemo(() => {
     // Sort photos by date (newest first)
-    const sortedPhotos = [...photos].sort((a, b) => {
+    const sortedPhotos = [...displayedPhotos].sort((a, b) => {
       const dateA = a.dateTimeOriginal ? new Date(a.dateTimeOriginal).getTime() : 0
       const dateB = b.dateTimeOriginal ? new Date(b.dateTimeOriginal).getTime() : 0
       return dateB - dateA
@@ -95,9 +100,12 @@ const PhotoGrid = ({
     })
 
     return grouped
-  }, [photos])
+  }, [displayedPhotos])
 
   useEffect(() => {
+    // sync displayedPhotos when parent photos prop changes
+    setDisplayedPhotos(photos)
+
     const loadImageUrls = async () => {
       const urlMap = new Map<number, string>()
       
@@ -120,6 +128,7 @@ const PhotoGrid = ({
       imageUrls.forEach(url => URL.revokeObjectURL(url))
     }
   }, [photos, createBlobUrl])
+
 
   useEffect(() => {
     const loadAlbums = async () => {
@@ -158,13 +167,13 @@ const PhotoGrid = ({
 
   // Keep selection in sync with current photos: remove any selected ids that no longer exist
   useEffect(() => {
-    const currentIds = new Set(photos.filter(p => p.id).map(p => p.id as number))
+    const currentIds = new Set(displayedPhotos.filter(p => p.id).map(p => p.id as number))
     setSelectedPhotos(prev => {
       const next = new Set(Array.from(prev).filter(id => currentIds.has(id)))
       if (next.size === 0 && isSelectionMode) setIsSelectionMode(false)
       return next
     })
-  }, [photos, isSelectionMode])
+  }, [displayedPhotos, isSelectionMode])
 
   // Exit selection mode with Escape key
   useEffect(() => {
@@ -330,7 +339,7 @@ const PhotoGrid = ({
   }
 
   const selectAll = () => {
-    const allPhotoIds = photos.filter(p => p.id).map(p => p.id!)
+    const allPhotoIds = displayedPhotos.filter(p => p.id).map(p => p.id!)
     setSelectedPhotos(new Set(allPhotoIds))
   }
 
@@ -464,7 +473,24 @@ const PhotoGrid = ({
       })
 
       if (allAreFavourites) {
+        // remove from favourites in repository
         await repository.removeFromFavourites(selectedArray)
+
+        // remove from current view immediately (useful when viewing the favourites album)
+        setDisplayedPhotos(prev => prev.filter(p => !(p.id && selectedArray.includes(p.id))))
+
+        // cleanup imageUrls for removed photos
+        setImageUrls(prev => {
+          const next = new Map(prev)
+          selectedArray.forEach(id => {
+            const url = next.get(id)
+            if (url) {
+              try { URL.revokeObjectURL(url) } catch {}
+            }
+            next.delete(id)
+          })
+          return next
+        })
       } else {
         const nonFavourites = selectedArray.filter(id => !favouritePhotoIds.has(id))
         if (nonFavourites.length > 0) {
@@ -477,6 +503,22 @@ const PhotoGrid = ({
         const favouritePhotos = await repository.getAlbumImages(favouritesAlbum.id)
         const favIds = new Set(favouritePhotos.map(p => p.id).filter((id): id is number => id !== undefined))
         setFavouritePhotoIds(favIds)
+      }
+
+      // Refresh albums list so counts in dialogs stay accurate
+      try {
+        const updatedAlbums = await repository.getAlbums()
+        setAlbums(updatedAlbums)
+      } catch (err) {
+        console.warn('Failed to refresh albums after toggling favourites', err)
+      }
+
+      // Notify other parts of the app that favourites changed so they can refresh (Albums page listens for this)
+      try {
+        const ev = new CustomEvent('favourites-updated', { detail: { removed: selectedArray } })
+        window.dispatchEvent(ev)
+      } catch (err) {
+        // ignore
       }
 
       exitSelectionMode()
@@ -515,7 +557,7 @@ const PhotoGrid = ({
       {showCount && (
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm text-muted-foreground">
-            {photos.length} {countLabel}{photos.length !== 1 ? 's' : ''} imported
+            {displayedPhotos.length} {countLabel}{displayedPhotos.length !== 1 ? 's' : ''} imported
           </p>
         </div>
       )}
