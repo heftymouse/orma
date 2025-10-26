@@ -256,7 +256,6 @@ const PhotoGrid = ({
 
   const onMouseMoveHandler = (e: React.MouseEvent<HTMLDivElement>) => {
     // only proceed while left button is pressed
-    // e.buttons property used to detect mouse pressed state
     if (e.buttons !== 1) return
     const container = containerRef.current
     if (!container) return
@@ -270,7 +269,6 @@ const PhotoGrid = ({
       if (Math.hypot(dx, dy) > 5) {
         dragRef.current.thresholdExceeded = true
         dragRef.current.dragging = true
-        // prevent text selection while dragging
         document.body.style.userSelect = 'none'
       } else {
         return
@@ -309,7 +307,6 @@ const PhotoGrid = ({
       const newSet = new Set(prev)
       if (newSet.has(photoId)) {
         newSet.delete(photoId)
-        // Exit selection mode if this was the last selected photo
         if (newSet.size === 0) {
           setIsSelectionMode(false)
         }
@@ -343,21 +340,15 @@ const PhotoGrid = ({
     
     setSelectedPhotos(prev => {
       if (allSelected) {
-        // Deselect all photos in this month
-        // @ts-ignore
-        let newSet = prev.difference(new Set(monthPhotoIds))
-        // monthPhotoIds.forEach(id => newSet.delete(id))
-        // Exit selection mode if no photos are selected
+        let newSet = new Set(prev)
+        monthPhotoIds.forEach(id => newSet.delete(id))
         if (newSet.size === 0) {
           setIsSelectionMode(false)
         }
         return newSet
       } else {
-        // Select all photos in this month
-        // @ts-ignore
-        let newSet = prev.union(new Set(monthPhotoIds))
-        // monthPhotoIds.forEach(id => newSet.add(id))
-        // Enter selection mode if not already in it
+        let newSet = new Set(prev)
+        monthPhotoIds.forEach(id => newSet.add(id))
         if (!isSelectionMode) {
           setIsSelectionMode(true)
         }
@@ -366,6 +357,7 @@ const PhotoGrid = ({
     })
   }
 
+  // Add to album with albums refresh to update count
   const handleAddToAlbum = async (albumId: number) => {
     if (!repository || selectedPhotos.size === 0) return
 
@@ -373,10 +365,10 @@ const PhotoGrid = ({
       await repository.addImagesToAlbum(albumId, Array.from(selectedPhotos))
       setShowAlbumDialog(false)
       exitSelectionMode()
-      // Optionally show success message
       console.log(`Added ${selectedPhotos.size} photos to album`)
-      const thingy = await repository.getAlbumImages(albumId)
-      console.log(thingy)
+
+      const updatedAlbums = await repository.getAlbums()
+      setAlbums(updatedAlbums)
     } catch (error) {
       console.error('Failed to add photos to album:', error)
     }
@@ -387,12 +379,12 @@ const PhotoGrid = ({
     setSelectedPhotoUrl(null)
   }
 
+  // Create album logic unchanged
   const handleCreateAlbum = async () => {
     if (!repository || !newAlbumName.trim() || selectedPhotos.size === 0) return
 
     const trimmed = newAlbumName.trim()
 
-    // Client-side duplicate check (case-insensitive)
     const duplicate = albums.some(a => a.name.toLowerCase() === trimmed.toLowerCase())
     if (duplicate) {
       setNewAlbumError('An album with this name already exists')
@@ -409,7 +401,6 @@ const PhotoGrid = ({
 
       await repository.addImagesToAlbum(albumId, Array.from(selectedPhotos))
 
-      // Refresh albums list
       const updatedAlbums = await repository.getAlbums()
       setAlbums(updatedAlbums)
 
@@ -418,7 +409,6 @@ const PhotoGrid = ({
       exitSelectionMode()
       console.log(`Created album "${trimmed}" with ${selectedPhotos.size} photos`)
     } catch (error: any) {
-      // If repository enforces uniqueness, surface that error to user
       if (error && /album/i.test(String(error.message)) && /exist/i.test(String(error.message))) {
         setNewAlbumError('An album with this name already exists')
       } else {
@@ -429,7 +419,7 @@ const PhotoGrid = ({
     }
   }
 
-  // Global Actions
+  // Delete photos and refresh albums for count update
   const handleDeletePhotos = async () => {
     if (!repository || selectedPhotos.size === 0) return
 
@@ -440,8 +430,13 @@ const PhotoGrid = ({
       setIsProcessing(true)
       await repository.deleteImagesByIds(Array.from(selectedPhotos))
       exitSelectionMode()
-      // Parent component should refetch photos
-      window.location.reload() // Simple reload for now
+
+      if (repository) {
+        const updatedAlbums = await repository.getAlbums()
+        setAlbums(updatedAlbums)
+      }
+
+      window.location.reload()
     } catch (error) {
       console.error('Failed to delete photos:', error)
     } finally {
@@ -449,35 +444,41 @@ const PhotoGrid = ({
     }
   }
 
+  // Toggle favourites with instant UI update
   const handleToggleFavourites = async () => {
     if (!repository || selectedPhotos.size === 0) return
 
     try {
       setIsProcessing(true)
-      
-      // Check if all selected photos are favourites
       const selectedArray = Array.from(selectedPhotos)
       const allAreFavourites = selectedArray.every(id => favouritePhotoIds.has(id))
-      
+
+      setFavouritePhotoIds(prev => {
+        const copy = new Set(prev)
+        if (allAreFavourites) {
+          selectedArray.forEach(id => copy.delete(id))
+        } else {
+          selectedArray.forEach(id => copy.add(id))
+        }
+        return copy
+      })
+
       if (allAreFavourites) {
-        // Remove all from favourites
         await repository.removeFromFavourites(selectedArray)
       } else {
-        // Add only non-favourites to favourites
         const nonFavourites = selectedArray.filter(id => !favouritePhotoIds.has(id))
         if (nonFavourites.length > 0) {
           await repository.addToFavourites(nonFavourites)
         }
       }
-      
-      // Reload favourites to update the button text
+
       const favouritesAlbum = await repository.getFavouritesAlbum()
       if (favouritesAlbum?.id) {
         const favouritePhotos = await repository.getAlbumImages(favouritesAlbum.id)
         const favIds = new Set(favouritePhotos.map(p => p.id).filter((id): id is number => id !== undefined))
         setFavouritePhotoIds(favIds)
       }
-      
+
       exitSelectionMode()
       console.log(`Updated favourites for ${selectedPhotos.size} photo(s)`)
     } catch (error) {
@@ -535,7 +536,6 @@ const PhotoGrid = ({
             <div className='flex items-center gap-2'>
               {selectedPhotos.size > 0 && (
                 <>
-                  {/* Custom actions passed from parent */}
                   {Object.entries(actions).map(([name, fn]) => (
                     <Button
                       key={name}
@@ -549,7 +549,6 @@ const PhotoGrid = ({
                           console.error(`Action ${name} failed:`, err)
                         } finally {
                           setIsProcessing(false)
-                          // Clear selection and exit selection mode after successful/failed action
                           exitSelectionMode()
                         }
                       }}
@@ -559,7 +558,6 @@ const PhotoGrid = ({
                     </Button>
                   ))}
                   <div className='w-0 mx-2 h-6 border-l border-l-blue-200' />
-                  {/* Global actions */}
                   <Button
                     variant="outline"
                     size="sm"
@@ -577,7 +575,6 @@ const PhotoGrid = ({
                   >
                     <Star size={16} />
                     {(() => {
-                      // Check if all selected photos are favourites
                       const selectedArray = Array.from(selectedPhotos)
                       const allAreFavourites = selectedArray.every(id => favouritePhotoIds.has(id))
                       return allAreFavourites ? 'Unfavourite' : 'Favourite'
@@ -605,7 +602,7 @@ const PhotoGrid = ({
       {hasPhotos ? (
         <div className="space-y-8">
           {Object.entries(groupedPhotos)
-            .sort(([a], [b]) => b.localeCompare(a)) // Sort months newest first
+            .sort(([a], [b]) => b.localeCompare(a))
             .map(([monthKey, { photos: monthPhotos, monthLabel }]) => {
               const monthPhotoIds = monthPhotos.filter(p => p.id).map(p => p.id!)
               const selectedInMonth = monthPhotoIds.filter(id => selectedPhotos.has(id)).length
@@ -616,15 +613,12 @@ const PhotoGrid = ({
               <div key={monthKey} className="space-y-4">
                 <div className="sticky top-0 z-10 border-b pb-2 flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold text-foreground">
-                      {monthLabel}
-                    </h2>
+                    <h2 className="text-lg font-semibold text-foreground">{monthLabel}</h2>
                     <p className="text-sm text-muted-foreground">
                       {monthPhotos.length} {countLabel}{monthPhotos.length !== 1 ? 's' : ''}
                     </p>
                   </div>
                   
-                  {/* Month selection checkbox */}
                   <Checkbox
                     checked={allMonthSelected ? true : someMonthSelected ? "indeterminate" : false}
                     onCheckedChange={() => handleMonthSelect(monthPhotos)}
@@ -672,7 +666,6 @@ const PhotoGrid = ({
                             : "bg-black/0 group-hover:bg-black/10"
                         )} />
                         
-                        {/* Selection indicator - show on hover or when selected */}
                         <div 
                           className={cn(
                             "absolute top-2 right-2 transition-opacity duration-200",
@@ -681,7 +674,6 @@ const PhotoGrid = ({
                           onClick={(e) => {
                             e.stopPropagation()
                             if (!isSelectionMode) {
-                              // Enter selection mode and select this photo
                               setIsSelectionMode(true)
                               setSelectedPhotos(new Set([photo.id!]))
                             } else {
