@@ -156,6 +156,16 @@ const PhotoGrid = ({
     loadFavourites()
   }, [repository, photos]) // Re-load when photos change
 
+  // Keep selection in sync with current photos: remove any selected ids that no longer exist
+  useEffect(() => {
+    const currentIds = new Set(photos.filter(p => p.id).map(p => p.id as number))
+    setSelectedPhotos(prev => {
+      const next = new Set(Array.from(prev).filter(id => currentIds.has(id)))
+      if (next.size === 0 && isSelectionMode) setIsSelectionMode(false)
+      return next
+    })
+  }, [photos, isSelectionMode])
+
   // Exit selection mode with Escape key
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -286,11 +296,11 @@ const PhotoGrid = ({
     }
   }
 
-  const onMouseUpHandler = (e: React.MouseEvent<HTMLDivElement>) => {
+  const onMouseUpHandler = () => {
     finishDrag()
   }
 
-  const onMouseLeaveHandler = (e: React.MouseEvent<HTMLDivElement>) => {
+  const onMouseLeaveHandler = () => {
     finishDrag()
   }
 
@@ -527,11 +537,22 @@ const PhotoGrid = ({
                 <>
                   {/* Custom actions passed from parent */}
                   {Object.entries(actions).map(([name, fn]) => (
-                    <Button 
+                    <Button
                       key={name}
-                      variant="outline" 
+                      variant="outline"
                       size="sm"
-                      onClick={() => fn(Array.from(selectedPhotos))}
+                      onClick={async () => {
+                        try {
+                          setIsProcessing(true)
+                          await fn(Array.from(selectedPhotos))
+                        } catch (err) {
+                          console.error(`Action ${name} failed:`, err)
+                        } finally {
+                          setIsProcessing(false)
+                          // Clear selection and exit selection mode after successful/failed action
+                          exitSelectionMode()
+                        }
+                      }}
                       disabled={isProcessing}
                     >
                       {name}

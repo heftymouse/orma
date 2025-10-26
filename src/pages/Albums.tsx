@@ -4,7 +4,7 @@ import type { Album, ImageRecord } from "@/lib/image-repository"
 import { useEffect, useState } from "react"
 import PhotoGrid from "@/components/PhotoGrid"
 import { Button } from "@/components/ui/button"
-import { Check } from "lucide-react"
+import { Check, Lock } from "lucide-react"
 
 const Albums = () => {
   const { repository } = useImageRepository()
@@ -18,6 +18,41 @@ const Albums = () => {
   const [loadingAlbums, setLoadingAlbums] = useState(false)
   const [loadingPhotos, setLoadingPhotos] = useState(false)
   const { createBlobUrl, directoryHandle } = useDirectory()
+  const [favouritesAlbumId, setFavouritesAlbumId] = useState<number | null>(null)
+
+  // Load favourites album id so it can be made unselectable
+  useEffect(() => {
+    let mounted = true
+    const loadFavourites = async () => {
+      if (!repository) return
+      try {
+        const fav = await repository.getFavouritesAlbum()
+        if (mounted) setFavouritesAlbumId(fav?.id ?? null)
+      } catch (err) {
+        console.warn('Failed to load favourites album id', err)
+      }
+    }
+
+    loadFavourites()
+
+    return () => { mounted = false }
+  }, [repository])
+
+  // Ensure favourites album is shown first (top-left) in the grid
+  useEffect(() => {
+    if (favouritesAlbumId == null || albums.length === 0) return
+
+    // If already first, nothing to do
+    if (albums[0]?.id === favouritesAlbumId) return
+
+    setAlbums(prev => {
+      const idx = prev.findIndex(a => a.id === favouritesAlbumId)
+      if (idx <= 0) return prev
+      const fav = prev[idx]
+      const rest = [...prev.slice(0, idx), ...prev.slice(idx + 1)]
+      return [fav, ...rest]
+    })
+  }, [favouritesAlbumId, albums])
 
   // Load albums when repository becomes available
   useEffect(() => {
@@ -215,13 +250,15 @@ const Albums = () => {
           {albums.map((a) => {
             const id = a.id ?? -Math.random()
             const isSelected = a.id ? selectedAlbums.has(a.id) : false
+            const isSelectable = !!a.id && favouritesAlbumId !== a.id
 
             return (
               <div
               key={id}
               onClick={() => {
                 if (isSelectionMode) {
-                  if (!a.id) return
+                  // In selection mode, don't allow selecting the favourites album
+                  if (!a.id || !isSelectable) return
                   setSelectedAlbums(prev => {
                     const next = new Set(prev)
                     if (next.has(a.id!)) next.delete(a.id!)
@@ -232,14 +269,19 @@ const Albums = () => {
                   openAlbum(a)
                 }
               }}
-              className={"relative w-full text-left bg-white border rounded-lg p-4 hover:shadow-md transition flex items-center gap-4 cursor-pointer"}
-            >
-              {/* Selection checkbox */}
+              className={`relative w-full text-left bg-white border rounded-lg p-4 hover:shadow-md transition flex items-center gap-4 ${isSelectionMode && !isSelectable ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
+              {/* Selection checkbox / disabled lock for favourites */}
               {isSelectionMode && (
                 <div className="absolute z-10 ml-2 mt-2">
-                  <div className={isSelected ? "w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs" : "w-5 h-5 rounded-full bg-white border flex items-center justify-center text-xs"}>
-                    {isSelected && <Check size={12} />}
-                  </div>
+                  {isSelectable ? (
+                    <div className={isSelected ? "w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs" : "w-5 h-5 rounded-full bg-white border flex items-center justify-center text-xs"}>
+                      {isSelected && <Check size={12} />}
+                    </div>
+                  ) : (
+                    <div title="Favorites cannot be selected" className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center text-xs text-gray-600">
+                      <Lock size={12} />
+                    </div>
+                  )}
                 </div>
               )}
 
