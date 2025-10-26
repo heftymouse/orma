@@ -22,6 +22,7 @@ function AppContent() {
   const [currentView, setCurrentView] = useState<ViewType>('timeline')
   const [photos, setPhotos] = useState<ImageRecord[]>([])
   const [isImporting, setIsImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 })
   const [pendingImport, setPendingImport] = useState<{ handle: FileSystemDirectoryHandle, shouldImport: boolean } | null>(null)
   const [showImportDialog, setShowImportDialog] = useState(false)
   const [importType, setImportType] = useState<'directory' | 'files'>('directory')
@@ -31,14 +32,14 @@ function AppContent() {
 
   // Load photos when repository is initialized and directory is set
   useEffect(() => {
-    if (isInitialized && repository && directoryHandle) {
+    if (isInitialized && repository && directoryHandle && !isImporting) {
       repository.getImages().then((images) => {
         if (images) {
           setPhotos(images)
         }
       })
     }
-  }, [isInitialized, repository, directoryHandle])
+  }, [isInitialized, repository, directoryHandle, isImporting])
 
   // Handle pending import after repository is initialized
   useEffect(() => {
@@ -67,19 +68,47 @@ function AppContent() {
       // Slow path: no database found, import all images
       console.log('No database found, importing images...');
       setIsImporting(true)
+      setImportProgress({ current: 0, total: 0 })
+      
       try {
-        // Import all images from the directory
-        await importImages(handle, { repository })
+        let finalCount = 0;
         
-        // Reload photos from repository
+        // Import all images from the directory with progress updates
+        await importImages(handle, { 
+          repository,
+          onProgress: async (current, total) => {
+            setImportProgress({ current, total })
+            finalCount = current;
+            // Refresh photos every 15 images or at completion
+            if (current === total || current % 15 === 0) {
+              const images = await repository.getImages()
+              if (images) {
+                setPhotos(images)
+              }
+            }
+          }
+        })
+        
+        // Final reload of photos from repository
         const images = await repository.getImages()
         if (images) {
           setPhotos(images)
         }
+        
+        toast.success('Import complete!', {
+          description: `Successfully imported ${finalCount} photo${finalCount !== 1 ? 's' : ''}`
+        })
       } catch (error) {
         console.error('Failed to import images:', error)
+        toast.error('Import failed', {
+          description: error instanceof Error ? error.message : 'An unknown error occurred'
+        })
       } finally {
-        setIsImporting(false)
+        // Small delay before hiding progress bar so user sees completion
+        setTimeout(() => {
+          setIsImporting(false)
+          setImportProgress({ current: 0, total: 0 })
+        }, 500)
       }
     };
 
@@ -169,14 +198,35 @@ function AppContent() {
         const importDirHandle = await window.showDirectoryPicker({ mode: 'read' })
         
         setIsImporting(true)
-        // Pass directoryHandle as target to copy the imported directory
-        await importImages(importDirHandle, { repository }, directoryHandle)
+        setImportProgress({ current: 0, total: 0 })
         
-        // Reload photos from repository
+        let finalCount = 0;
+        
+        // Pass directoryHandle as target to copy the imported directory
+        await importImages(importDirHandle, { 
+          repository,
+          onProgress: async (current, total) => {
+            setImportProgress({ current, total })
+            finalCount = current;
+            // Refresh photos every 15 images or at completion
+            if (current === total || current % 15 === 0) {
+              const images = await repository.getImages()
+              if (images) {
+                setPhotos(images)
+              }
+            }
+          }
+        }, directoryHandle)
+        
+        // Final reload photos from repository
         const images = await repository.getImages()
         if (images) {
           setPhotos(images)
         }
+        
+        toast.success('Import complete!', {
+          description: `Successfully imported ${finalCount} photo${finalCount !== 1 ? 's' : ''}`
+        })
       } else {
         // Import individual files
         const input = document.createElement('input')
@@ -187,7 +237,10 @@ function AppContent() {
         input.onchange = async () => {
           if (!input.files || input.files.length === 0) return
           
+          const fileCount = input.files.length;
           setIsImporting(true)
+          setImportProgress({ current: 0, total: fileCount })
+          
           try {
             const files = Array.from(input.files)
             await importFiles(files, directoryHandle, repository)
@@ -197,10 +250,21 @@ function AppContent() {
             if (images) {
               setPhotos(images)
             }
+            
+            toast.success('Import complete!', {
+              description: `Successfully imported ${fileCount} file${fileCount !== 1 ? 's' : ''}`
+            })
           } catch (error) {
             console.error('Failed to import files:', error)
+            toast.error('Import failed', {
+              description: error instanceof Error ? error.message : 'An unknown error occurred'
+            })
           } finally {
-            setIsImporting(false)
+            // Small delay before hiding progress bar so user sees completion
+            setTimeout(() => {
+              setIsImporting(false)
+              setImportProgress({ current: 0, total: 0 })
+            }, 500)
           }
         }
         
@@ -208,26 +272,21 @@ function AppContent() {
       }
     } catch (error) {
       console.error('Failed to import:', error)
+      toast.error('Import failed', {
+        description: error instanceof Error ? error.message : 'An unknown error occurred'
+      })
     } finally {
-      setIsImporting(false)
+      // Small delay before hiding progress bar so user sees completion
+      setTimeout(() => {
+        setIsImporting(false)
+        setImportProgress({ current: 0, total: 0 })
+      }, 500)
     }
   }
 
   // Show directory picker if no directory is selected
   if (!directoryHandle) {
     return <DirectoryPicker onDirectorySelected={handleDirectorySelected} />
-  }
-
-  // Show loading state during import
-  if (isImporting) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Importing photos...</p>
-        </div>
-      </div>
-    )
   }
 
   const renderView = () => {
@@ -258,7 +317,35 @@ function AppContent() {
         onImport={handleImport}
         repository={repository}
       />
-      <main className="max-w-7xl mx-auto p-4">
+      
+      {/* Import Progress Bar */}
+      {isImporting && importProgress.total > 0 && importProgress.current < importProgress.total && (
+        <div className="fixed top-16 left-0 right-0 z-40 bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl mx-auto p-4">
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700">
+                    Importing photos...
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {importProgress.current} / {importProgress.total}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <main className={`max-w-7xl mx-auto p-4 ${isImporting && importProgress.total > 0 ? 'mt-20' : ''}`}>
         {isInitialized ? renderView() : (
           <div className="flex items-center justify-center h-64">
             <p className="text-gray-500">Initializing image repository...</p>

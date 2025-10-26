@@ -1,13 +1,5 @@
-import exifr from "exifr";
 import type { ImageRepository } from "./image-repository";
-
-// Supported image file extensions
-const IMAGE_EXTENSIONS = new Set([
-  'jpg', 'jpeg', 'jpe', 'jfif',
-  'png', 'gif', 'webp', 'bmp',
-  'tiff', 'tif', 'heic', 'heif',
-  'avif', 'svg', 'ico'
-]);
+import { isImageFile, enumerateFiles, extractImageMetadata } from "./import-utils";
 
 export interface ImageFileMetadata {
   file: File;
@@ -16,124 +8,24 @@ export interface ImageFileMetadata {
   error?: string;
 }
 
+// Worker configuration constants
+const WORKER_THRESHOLD = 50; // Enable workers for 50+ images
+const BATCH_SIZE = 15; // Process 15 images per batch
+const MAX_WORKERS = 6; // Cap at 6 workers
+
+/**
+ * Get the optimal number of workers based on hardware
+ */
+function getOptimalWorkerCount(): number {
+  const cores = navigator.hardwareConcurrency || 4;
+  return Math.min(Math.max(cores - 1, 1), MAX_WORKERS);
+}
+
 interface ImportImagesOptions {
   maxDepth?: number;
   includeSubdirectories?: boolean;
   onProgress?: (current: number, total: number) => void;
   repository?: ImageRepository;
-}
-
-/**
- * Check if a file is an image based on its extension
- */
-function isImageFile(filename: string): boolean {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  return ext ? IMAGE_EXTENSIONS.has(ext) : false;
-}
-
-/**
- * Recursively enumerate all files in a directory handle
- */
-async function* enumerateFiles(
-  dirHandle: FileSystemDirectoryHandle,
-  currentPath: string = '',
-  currentDepth: number = 0,
-  maxDepth: number = Infinity
-): AsyncGenerator<{ file: File; path: string }> {
-  if (currentDepth > maxDepth) {
-    return;
-  }
-
-  // @ts-ignore - FileSystemDirectoryHandle is async iterable
-  for await (const [name, handle] of dirHandle.entries()) {
-    const entryPath = currentPath ? `${currentPath}/${name}` : name;
-
-    if (handle.kind === 'file') {
-      if (isImageFile(name)) {
-        const file = await handle.getFile();
-        yield { file, path: entryPath };
-      }
-    } else if (handle.kind === 'directory') {
-      yield* enumerateFiles(handle, entryPath, currentDepth + 1, maxDepth);
-    }
-  }
-}
-
-/**
- * Extract metadata from an image file using exifr
- */
-async function extractImageMetadata(file: File): Promise<any> {
-  try {
-    const metadata = await exifr.parse(file, {
-      tiff: true,
-      exif: true,
-      gps: true,
-      iptc: true,
-      xmp: true,
-      icc: false,
-      jfif: true,
-      ihdr: true,
-      // Pick only human-readable fields useful for photographers
-      pick: [
-        // Camera & Lens
-        'Make', 'Model', 'LensModel', 'LensMake',
-        
-        // Exposure settings
-        'ISO', 'ISOSpeedRatings',
-        'FNumber', 'ApertureValue',
-        'ExposureTime', 'ShutterSpeedValue',
-        'ExposureCompensation', 'ExposureMode', 'ExposureProgram',
-        'MeteringMode', 'Flash',
-        
-        // Focus
-        'FocalLength', 'FocalLengthIn35mmFormat',
-        'FocusMode', 'FocusDistance',
-        
-        // Image properties
-        'ImageWidth', 'ImageHeight',
-        'Orientation',
-        'ColorSpace',
-        'WhiteBalance',
-        
-        // Date & Time
-        'DateTimeOriginal', 'CreateDate', 'ModifyDate',
-        'OffsetTime', 'OffsetTimeOriginal',
-        
-        // GPS (if available)
-        'GPSLatitude', 'GPSLongitude', 'GPSAltitude',
-        'GPSDateStamp', 'GPSTimeStamp',
-        
-        // Creator/Copyright
-        'Artist', 'Copyright', 'Creator',
-        'ImageDescription', 'UserComment',
-        
-        // IPTC fields
-        'Caption', 'Headline', 'Keywords',
-        'Credit', 'Source', 'City', 'Country',
-        
-        // Shooting conditions
-        'BrightnessValue',
-        'LightSource',
-        'Contrast', 'Saturation', 'Sharpness',
-        
-        // File format
-        'FileType', 'MIMEType',
-      ]
-    });
-
-    return {
-      // File info
-      filename: file.name,
-      fileSize: file.size,
-      mimeType: file.type,
-      lastModified: new Date(file.lastModified),
-      
-      // Metadata from exifr
-      ...metadata,
-    };
-  } catch (error) {
-    throw new Error(`Failed to extract metadata: ${error instanceof Error ? error.message : String(error)}`);
-  }
 }
 
 /**
@@ -166,8 +58,176 @@ async function copyDirectory(
 }
 
 /**
+ * Import images using multiple workers for parallel processing
+ * Uses a dynamic work queue to distribute batches across workers
+ */
+async function importImagesWithWorkers(
+  dirHandle: FileSystemDirectoryHandle,
+  options: ImportImagesOptions = {},
+  targetDirHandle?: FileSystemDirectoryHandle
+): Promise<ImageFileMetadata[]> {
+  const { maxDepth = Infinity, onProgress, repository } = options;
+
+  let effectiveDirHandle = dirHandle;
+  let pathPrefix = '';
+
+  // If target directory is provided, copy the entire directory first
+  if (targetDirHandle) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const importDirName = `import_${timestamp}`;
+    const importDirHandle = await targetDirHandle.getDirectoryHandle(importDirName, { create: true });
+    
+    console.log(`Copying directory to: ${importDirName}`);
+    await copyDirectory(dirHandle, importDirHandle);
+    console.log(`Directory copy complete`);
+    
+    effectiveDirHandle = importDirHandle;
+    pathPrefix = importDirName;
+  }
+
+  // Step 1: Use a single worker to enumerate all files
+  const enumerationWorker = new Worker(new URL('./import.worker.ts', import.meta.url), { type: 'module' });
+  
+  const allFiles = await new Promise<Array<{ path: string }>>((resolve, reject) => {
+    enumerationWorker.onmessage = (event) => {
+      if (event.data.type === 'enumeration-complete') {
+        resolve(event.data.files);
+      } else if (event.data.type === 'error') {
+        reject(new Error(event.data.error));
+      }
+    };
+
+    enumerationWorker.onerror = (error) => {
+      reject(error);
+    };
+
+    enumerationWorker.postMessage({
+      type: 'enumerate',
+      dirHandle: effectiveDirHandle,
+      maxDepth,
+      pathPrefix
+    });
+  });
+
+  enumerationWorker.terminate();
+
+  const totalFiles = allFiles.length;
+  console.log(`Found ${totalFiles} image files`);
+
+  // Step 2: Build a file map by re-enumerating (needed for File objects)
+  const fileMap = new Map<string, File>();
+  for await (const fileEntry of enumerateFiles(effectiveDirHandle, '', 0, maxDepth)) {
+    const finalPath = pathPrefix ? `${pathPrefix}/${fileEntry.path}` : fileEntry.path;
+    fileMap.set(finalPath, fileEntry.file);
+  }
+
+  // Step 3: Create batches for processing
+  const batches: Array<Array<{ path: string }>> = [];
+  for (let i = 0; i < allFiles.length; i += BATCH_SIZE) {
+    batches.push(allFiles.slice(i, i + BATCH_SIZE));
+  }
+
+  // Step 4: Create worker pool
+  const workerCount = getOptimalWorkerCount();
+  const workers: Worker[] = [];
+  
+  for (let i = 0; i < workerCount; i++) {
+    workers.push(new Worker(new URL('./import.worker.ts', import.meta.url), { type: 'module' }));
+  }
+
+  console.log(`Processing with ${workerCount} workers in ${batches.length} batches`);
+
+  // Step 5: Process batches with dynamic work queue
+  const results: ImageFileMetadata[] = [];
+  let completedFiles = 0;
+  let batchIndex = 0;
+  const batchesToSave: ImageFileMetadata[] = [];
+
+  const processBatch = (worker: Worker): Promise<void> => {
+    if (batchIndex >= batches.length) {
+      return Promise.resolve();
+    }
+
+    const currentBatch = batches[batchIndex++];
+    
+    return new Promise((resolve, reject) => {
+      const handler = async (event: MessageEvent) => {
+        if (event.data.type === 'batch-complete') {
+          // Process results and combine with File objects
+          for (const result of event.data.results) {
+            const file = fileMap.get(result.path);
+            
+            const imageData: ImageFileMetadata = {
+              file: file || new File([], result.path),
+              path: result.path,
+              metadata: result.metadata,
+              error: result.error
+            };
+
+            results.push(imageData);
+            batchesToSave.push(imageData);
+            completedFiles++;
+          }
+
+          // Save to database incrementally after each batch
+          if (repository && batchesToSave.length > 0) {
+            await repository.saveImages(batchesToSave);
+            batchesToSave.length = 0; // Clear the batch
+          }
+
+          if (onProgress) {
+            onProgress(completedFiles, totalFiles);
+          }
+
+          worker.removeEventListener('message', handler);
+          worker.removeEventListener('error', errorHandler);
+          
+          // Process next batch with this worker
+          resolve(processBatch(worker));
+        } else if (event.data.type === 'error') {
+          worker.removeEventListener('message', handler);
+          worker.removeEventListener('error', errorHandler);
+          reject(new Error(event.data.error));
+        }
+      };
+
+      const errorHandler = (error: ErrorEvent) => {
+        worker.removeEventListener('message', handler);
+        worker.removeEventListener('error', errorHandler);
+        reject(error);
+      };
+
+      worker.addEventListener('message', handler);
+      worker.addEventListener('error', errorHandler);
+
+      worker.postMessage({
+        type: 'process-batch',
+        dirHandle: effectiveDirHandle,
+        batch: currentBatch,
+        maxDepth,
+        pathPrefix
+      });
+    });
+  };
+
+  // Start processing with all workers
+  await Promise.all(workers.map(worker => processBatch(worker)));
+
+  // Cleanup workers
+  workers.forEach(worker => worker.terminate());
+
+  // Save any remaining items in the batch (shouldn't happen but just in case)
+  if (repository && batchesToSave.length > 0) {
+    await repository.saveImages(batchesToSave);
+  }
+
+  return results;
+}
+
+/**
  * Recursively enumerate image files in a directory and extract their metadata
  * Optionally copies the entire directory to a timestamped subdirectory
+ * Automatically uses multi-worker processing for large imports (50+ images)
  * 
  * @param dirHandle - FileSystemDirectoryHandle to start enumeration from
  * @param options - Configuration options
@@ -194,6 +254,27 @@ export async function importImages(
     onProgress,
     repository
   } = options;
+
+  // Quick check: count files to determine if we should use workers
+  let fileCount = 0;
+  const countGenerator = enumerateFiles(dirHandle, '', 0, maxDepth);
+  
+  for await (const _ of countGenerator) {
+    fileCount++;
+    // Early exit if we hit the threshold
+    if (fileCount >= WORKER_THRESHOLD) {
+      break;
+    }
+  }
+
+  // Use workers for large imports
+  if (fileCount >= WORKER_THRESHOLD) {
+    console.log(`Using multi-worker processing for ${fileCount}+ images`);
+    return importImagesWithWorkers(dirHandle, options, targetDirHandle);
+  }
+
+  // Use sequential processing for small imports
+  console.log(`Using sequential processing for small import`);
 
   let effectiveDirHandle = dirHandle;
   let pathPrefix = '';
