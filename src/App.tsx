@@ -345,7 +345,7 @@ function AppContent() {
         </div>
       )}
       
-      <main className={`max-w-7xl mx-auto p-4 ${isImporting && importProgress.total > 0 ? 'mt-20' : ''}`}>
+      <main className={`max-w-7xl mx-auto p-4 ${isImporting && importProgress.total > 0 ? 'pt-16' : ''}`}>
         {isInitialized ? renderView() : (
           <div className="flex items-center justify-center h-64">
             <p className="text-gray-500">Initializing image repository...</p>

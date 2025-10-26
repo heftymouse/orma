@@ -23,8 +23,8 @@ interface GroupedPhotos {
   }
 }
 
-const PhotoGrid = ({ 
-  photos, 
+const PhotoGrid = ({
+  photos,
   emptyMessage = "No photos yet. Click Import to add photos.",
   showCount = true,
   countLabel = "photo",
@@ -78,23 +78,23 @@ const PhotoGrid = ({
 
     // Group by month
     const grouped: GroupedPhotos = {}
-    
+
     sortedPhotos.forEach(photo => {
       if (photo.dateTimeOriginal) {
         const date = new Date(photo.dateTimeOriginal)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-        const monthLabel = date.toLocaleDateString('en-US', { 
-          year: 'numeric', 
-          month: 'long' 
+        const monthLabel = date.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long'
         })
-        
+
         if (!grouped[monthKey]) {
           grouped[monthKey] = {
             photos: [],
             monthLabel
           }
         }
-        
+
         grouped[monthKey].photos.push(photo)
       }
     })
@@ -108,7 +108,7 @@ const PhotoGrid = ({
 
     const loadImageUrls = async () => {
       const urlMap = new Map<number, string>()
-      
+
       for (const photo of photos) {
         if (photo.id) {
           const url = await createBlobUrl(photo.path)
@@ -117,7 +117,7 @@ const PhotoGrid = ({
           }
         }
       }
-      
+
       setImageUrls(urlMap)
     }
 
@@ -149,7 +149,7 @@ const PhotoGrid = ({
   useEffect(() => {
     const loadFavourites = async () => {
       if (!repository) return
-      
+
       try {
         const favouritesAlbum = await repository.getFavouritesAlbum()
         if (favouritesAlbum?.id) {
@@ -346,7 +346,7 @@ const PhotoGrid = ({
   const handleMonthSelect = (monthPhotos: ImageRecord[]) => {
     const monthPhotoIds = monthPhotos.filter(p => p.id).map(p => p.id!)
     const allSelected = monthPhotoIds.every(id => selectedPhotos.has(id))
-    
+
     setSelectedPhotos(prev => {
       if (allSelected) {
         let newSet = new Set(prev)
@@ -485,7 +485,7 @@ const PhotoGrid = ({
           selectedArray.forEach(id => {
             const url = next.get(id)
             if (url) {
-              try { URL.revokeObjectURL(url) } catch {}
+              try { URL.revokeObjectURL(url) } catch { }
             }
             next.delete(id)
           })
@@ -534,7 +534,7 @@ const PhotoGrid = ({
 
   return (
     <div
-      className='relative overflow-y-auto'
+      className='relative'
       ref={containerRef}
       onMouseDown={onMouseDownHandler}
       onMouseMove={onMouseMoveHandler}
@@ -564,7 +564,7 @@ const PhotoGrid = ({
 
       {/* Selection Mode Header */}
       {isSelectionMode && (
-    <div className="sticky top-0 left-0 w-full z-50 bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="sticky top-20 left-0 w-full z-50 bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <div className="flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">
@@ -650,110 +650,111 @@ const PhotoGrid = ({
               const selectedInMonth = monthPhotoIds.filter(id => selectedPhotos.has(id)).length
               const allMonthSelected = monthPhotoIds.length > 0 && selectedInMonth === monthPhotoIds.length
               const someMonthSelected = selectedInMonth > 0 && selectedInMonth < monthPhotoIds.length
-              
+
               return (
-              <div key={monthKey} className="space-y-4">
-                <div className="sticky top-0 z-10 border-b pb-2 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">{monthLabel}</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {monthPhotos.length} {countLabel}{monthPhotos.length !== 1 ? 's' : ''}
-                    </p>
+                <div key={monthKey} className="space-y-4">
+                  <div className="sticky top-0 z-10 border-b pb-2 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-foreground">{monthLabel}</h2>
+                      <p className="text-sm text-muted-foreground">
+                        {monthPhotos.length} {countLabel}{monthPhotos.length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+
+                    <Checkbox
+                      checked={allMonthSelected ? true : someMonthSelected ? "indeterminate" : false}
+                      onCheckedChange={() => handleMonthSelect(monthPhotos)}
+                      className="size-6"
+                    />
                   </div>
-                  
-                  <Checkbox
-                    checked={allMonthSelected ? true : someMonthSelected ? "indeterminate" : false}
-                    onCheckedChange={() => handleMonthSelect(monthPhotos)}
-                    className="size-6"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
-                  {monthPhotos.map((photo, index) => {
-                    const url = photo.id ? imageUrls.get(photo.id) : undefined
-                    const isSelected = photo.id ? selectedPhotos.has(photo.id) : false
-                    
-                    if (!url) return null
-                    
-                    return (
-                      <div
-                        key={photo.id ?? index}
-                        ref={(el) => {
-                          if (photo.id) {
-                            if (el) itemRefs.current.set(photo.id, el)
-                            else itemRefs.current.delete(photo.id)
-                          }
-                        }}
-                        className={cn(
-                          "group relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer",
-                          isSelected && "ring-2 ring-blue-500"
-                        )}
-                        onClick={() => handlePhotoClick(photo, url)}
-                        onContextMenu={(e) => {
-                          e.preventDefault()
-                          if (photo.id) handleLongPress(photo.id)
-                        }}
-                      >
-                        <img 
-                          src={url} 
-                          alt={photo.filename} 
-                          className={cn(
-                            "w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                          )}
-                        />
-                        <div className={cn(
-                          "absolute inset-0 transition-colors duration-200",
-                          isSelected 
-                            ? "bg-blue-500/20" 
-                            : "bg-black/0 group-hover:bg-black/10"
-                        )} />
-                        
-                        <div 
-                          className={cn(
-                            "absolute top-2 right-2 transition-opacity duration-200",
-                            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                          )}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            if (!isSelectionMode) {
-                              setIsSelectionMode(true)
-                              setSelectedPhotos(new Set([photo.id!]))
-                            } else {
-                              handlePhotoSelect(photo.id!)
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
+                    {monthPhotos.map((photo, index) => {
+                      const url = photo.id ? imageUrls.get(photo.id) : undefined
+                      const isSelected = photo.id ? selectedPhotos.has(photo.id) : false
+
+                      if (!url) return null
+
+                      return (
+                        <div
+                          key={photo.id ?? index}
+                          ref={(el) => {
+                            if (photo.id) {
+                              if (el) itemRefs.current.set(photo.id, el)
+                              else itemRefs.current.delete(photo.id)
                             }
                           }}
+                          className={cn(
+                            "group relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer",
+                            isSelected && "ring-2 ring-blue-500"
+                          )}
+                          onClick={() => handlePhotoClick(photo, url)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            if (photo.id) handleLongPress(photo.id)
+                          }}
                         >
-                          <Checkbox
-                            checked={isSelected}
+                          <img
+                            src={url}
+                            alt={photo.filename}
                             className={cn(
-                              "size-6 border-2 transition-all pointer-events-none",
-                              isSelected 
-                                ? "bg-blue-500 border-blue-500" 
-                                : "bg-white/80 border-white"
+                              "w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                             )}
                           />
+                          <div className={cn(
+                            "absolute inset-0 transition-colors duration-200",
+                            isSelected
+                              ? "bg-blue-500/20"
+                              : "bg-black/0 group-hover:bg-black/10"
+                          )} />
+
+                          <div
+                            className={cn(
+                              "absolute top-2 right-2 transition-opacity duration-200",
+                              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                            )}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (!isSelectionMode) {
+                                setIsSelectionMode(true)
+                                setSelectedPhotos(new Set([photo.id!]))
+                              } else {
+                                handlePhotoSelect(photo.id!)
+                              }
+                            }}
+                          >
+                            <Checkbox
+                              checked={isSelected}
+                              className={cn(
+                                "size-6 border-2 transition-all pointer-events-none",
+                                isSelected
+                                  ? "bg-blue-500 border-blue-500"
+                                  : "bg-white/80 border-white"
+                              )}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            )})}
+              )
+            })}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-            <svg 
-              className="w-6 h-6 text-muted-foreground" 
-              fill="none" 
-              stroke="currentColor" 
+            <svg
+              className="w-6 h-6 text-muted-foreground"
+              fill="none"
+              stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth={2} 
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" 
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
               />
             </svg>
           </div>
