@@ -158,5 +158,11 @@ export default function MapView({ photos, onBoundsChange }: MapViewProps) {
     }
   }, [photos, createBlobUrl])
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', minHeight: 300 }} />
+  return (
+    <div
+      ref={containerRef}
+      className="relative z-0"
+      style={{ width: '100%', height: '100%', minHeight: 300 }}
+    />
+  )
 }

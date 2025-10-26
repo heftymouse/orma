@@ -534,7 +534,7 @@ const PhotoGrid = ({
 
   return (
     <div
-      className='relative'
+      className='relative overflow-y-auto'
       ref={containerRef}
       onMouseDown={onMouseDownHandler}
       onMouseMove={onMouseMoveHandler}
@@ -564,7 +564,7 @@ const PhotoGrid = ({
 
       {/* Selection Mode Header */}
       {isSelectionMode && (
-        <div className="sticky w-full top-20 z-20 bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+    <div className="sticky top-0 left-0 w-full z-50 bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
           <div className="flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">
