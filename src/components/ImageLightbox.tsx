@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react"
-import { X, Info, ChevronDown, ChevronRight } from "lucide-react"
+import { X, Info, ChevronDown, ChevronRight, ChevronLeft, ChevronRight as ChevronRightArrow } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { ImageRecord } from "@/lib/image-repository"
@@ -8,9 +8,22 @@ interface ImageLightboxProps {
   src: string | null
   photo: ImageRecord
   onClose: () => void
+
+  photos: ImageRecord[]
+  photoIndex: number
+  setPhotoIndex: (idx: number) => void
+  imageUrls: Map<number, string>
 }
 
-export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProps) {
+export default function ImageLightbox({
+  src,
+  photo,
+  onClose,
+  photos,
+  photoIndex,
+  setPhotoIndex,
+  imageUrls
+}: ImageLightboxProps) {
   const [showInfo, setShowInfo] = useState(false)
   const [dimensions, setDimensions] = useState<{ w: number; h: number } | null>(null)
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false)
@@ -26,30 +39,45 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
   const [showControls, setShowControls] = useState(true)
   const hideTimer = useRef<number | null>(null)
 
+  // Calculate current photo and URL based on photoIndex
+  const currentPhoto = photos[photoIndex]
+  const currentUrl = imageUrls.get(currentPhoto.id) ?? src
+
   useEffect(() => {
-    if (!src) return
+    if (!currentUrl) return
     const img = new Image()
-    img.src = src
+    img.src = currentUrl
     const onLoad = () => setDimensions({ w: img.naturalWidth, h: img.naturalHeight })
     img.addEventListener("load", onLoad)
     return () => {
       img.removeEventListener("load", onLoad)
       setDimensions(null)
     }
-  }, [src])
+  }, [currentUrl])
 
+  // Keyboard navigation: left/right arrows and Escape, "i" toggle info, zoom keys
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose()
-      if (e.key === "i" || e.key === "I") setShowInfo((s) => !s)
-      if (e.key === "+" || e.key === "=") setScale((s) => Math.min(4, +(s + 0.25).toFixed(2)))
-      if (e.key === "-") setScale((s) => Math.max(0.5, +(s - 0.25).toFixed(2)))
+      if (e.key === "i" || e.key === "I") setShowInfo(s => !s)
+      if (e.key === "ArrowLeft") {
+        setPhotoIndex(idx => Math.max(idx - 1, 0))
+        setScale(1)
+        setTranslate({ x: 0, y: 0 })
+      }
+      if (e.key === "ArrowRight") {
+        setPhotoIndex(idx => Math.min(idx + 1, photos.length - 1))
+        setScale(1)
+        setTranslate({ x: 0, y: 0 })
+      }
+      if (e.key === "+" || e.key === "=") setScale(s => Math.min(4, +(s + 0.25).toFixed(2)))
+      if (e.key === "-") setScale(s => Math.max(0.5, +(s - 0.25).toFixed(2)))
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  }, [onClose, photos.length, setPhotoIndex])
 
-  if (!src) return null
+  if (!currentUrl) return null
 
   const formatBytes = (n?: number) =>
     n == null ? "—" : n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`
@@ -113,10 +141,27 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-    useEffect(() => {
+  // prevent background scroll when modal open
+  useEffect(() => {
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
-    }, []);
+  }, []);
+
+  // Navigation buttons handlers
+  const goPrev = () => {
+    if (photoIndex > 0) {
+      setPhotoIndex(photoIndex - 1)
+      setScale(1)
+      setTranslate({ x: 0, y: 0 })
+    }
+  }
+  const goNext = () => {
+    if (photoIndex < photos.length - 1) {
+      setPhotoIndex(photoIndex + 1)
+      setScale(1)
+      setTranslate({ x: 0, y: 0 })
+    }
+  }
 
   return (
     <div
@@ -147,7 +192,7 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
           )}
         >
           <div className="text-sm text-white/90 font-medium truncate max-w-[50%]">
-            {photo.filename ?? "Photo"}
+            {currentPhoto.filename ?? "Photo"}
           </div>
 
           <div className="flex items-center gap-2">
@@ -165,9 +210,9 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
               <Info size={16} className="text-white" />
             </Button>
 
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={(e) => {
                 e.stopPropagation()
                 onClose()
@@ -180,6 +225,28 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
           </div>
         </div>
 
+        {/* Navigation buttons */}
+        {photoIndex > 0 && (
+          <button
+            type="button"
+            onClick={goPrev}
+            className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black bg-opacity-50 p-2 text-white hover:bg-opacity-75 z-40"
+            aria-label="Previous"
+          >
+            <ChevronLeft size={24} />
+          </button>
+        )}
+        {photoIndex < photos.length - 1 && (
+          <button
+            type="button"
+            onClick={goNext}
+            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black bg-opacity-50 p-2 text-white hover:bg-opacity-75 z-40"
+            aria-label="Next"
+          >
+            <ChevronRightArrow size={24} />
+          </button>
+        )}
+
         {/* Image area with pan/zoom */}
         <div
           ref={imgContainerRef}
@@ -191,8 +258,8 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
           onDoubleClick={onDoubleClick}
         >
           <img
-            src={src}
-            alt={photo.filename ?? "photo"}
+            src={currentUrl}
+            alt={currentPhoto.filename ?? "photo"}
             className="max-w-[90vw] max-h-[90vh] object-contain select-none"
             draggable={false}
             onWheel={onWheel}
@@ -231,28 +298,28 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
           <div className="space-y-3 text-sm">
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Name</div>
-              <div className="font-medium text-gray-900">{photo.filename ?? '—'}</div>
+              <div className="font-medium text-gray-900">{currentPhoto.filename ?? '—'}</div>
             </div>
 
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Type</div>
-              <div className="font-medium text-gray-900">{photo.mimeType || 'image/*'}</div>
+              <div className="font-medium text-gray-900">{currentPhoto.mimeType || 'image/*'}</div>
             </div>
 
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Size</div>
-              <div className="font-medium text-gray-900">{formatBytes(photo.fileSize)}</div>
+              <div className="font-medium text-gray-900">{formatBytes(currentPhoto.fileSize)}</div>
             </div>
 
             <div className="bg-gray-50 p-3 rounded-lg">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Last modified</div>
-              <div className="font-medium text-gray-900">{formatDate(photo.lastModified)}</div>
+              <div className="font-medium text-gray-900">{formatDate(currentPhoto.lastModified)}</div>
             </div>
 
-            {photo.dateTimeOriginal && (
+            {currentPhoto.dateTimeOriginal && (
               <div className="bg-gray-50 p-3 rounded-lg">
                 <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Date taken</div>
-                <div className="font-medium text-gray-900">{formatDate(photo.dateTimeOriginal)}</div>
+                <div className="font-medium text-gray-900">{formatDate(currentPhoto.dateTimeOriginal)}</div>
               </div>
             )}
 
@@ -261,7 +328,7 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
               <div className="font-medium text-gray-900">{dimensions ? `${dimensions.w} × ${dimensions.h}` : 'Loading…'}</div>
             </div>
 
-            {photo.metadata && (
+            {currentPhoto.metadata && (
               <div className="bg-gray-50 p-3 rounded-lg">
                 <button
                   onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
@@ -277,7 +344,7 @@ export default function ImageLightbox({ src, photo, onClose }: ImageLightboxProp
                 
                 {showAdvancedDetails && (
                   <div className="mt-2 space-y-2">
-                    {Object.entries(photo.metadata)
+                    {Object.entries(currentPhoto.metadata)
                       .filter(([key, value]) => value != null && value !== '' && key !== 'filename' && key !== 'fileSize' && key !== 'mimeType' && key !== 'lastModified')
                       .map(([key, value]) => (
                         <div key={key} className="flex justify-between">

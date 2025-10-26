@@ -43,6 +43,10 @@ const PhotoGrid = ({
   const [isProcessing, setIsProcessing] = useState(false)
   const [favouritePhotoIds, setFavouritePhotoIds] = useState<Set<number>>(new Set())
 
+  // For lightbox navigation
+  const [lightboxPhotos, setLightboxPhotos] = useState<ImageRecord[]>([])
+  const [lightboxIndex, setLightboxIndex] = useState<number>(0)
+
   // Refs for drag-to-select (marquee)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
@@ -171,7 +175,15 @@ const PhotoGrid = ({
     if (isSelectionMode) {
       handlePhotoSelect(photo.id!)
     } else {
-      // Open the photo in lightbox
+      // Compute month group
+      const monthKey = photo.dateTimeOriginal
+        ? `${new Date(photo.dateTimeOriginal).getFullYear()}-${String(new Date(photo.dateTimeOriginal).getMonth() + 1).padStart(2, '0')}`
+        : null
+      const groupPhotos = monthKey && groupedPhotos[monthKey]
+        ? groupedPhotos[monthKey].photos
+        : [photo]
+      setLightboxPhotos(groupPhotos)
+      setLightboxIndex(groupPhotos.findIndex(p => p.id === photo.id))
       setSelectedPhoto(photo)
       setSelectedPhotoUrl(url)
     }
@@ -281,7 +293,6 @@ const PhotoGrid = ({
   const onMouseLeaveHandler = (e: React.MouseEvent<HTMLDivElement>) => {
     finishDrag()
   }
-
 
   const handlePhotoSelect = (photoId: number) => {
     setSelectedPhotos(prev => {
@@ -780,9 +791,13 @@ const PhotoGrid = ({
         </div>
       )}
 
-      {/* Lightbox */}
+      {/* Lightbox with arrow key navigation */}
       {selectedPhoto && selectedPhotoUrl && (
         <ImageLightbox
+          photos={lightboxPhotos}
+          photoIndex={lightboxIndex}
+          setPhotoIndex={setLightboxIndex}
+          imageUrls={imageUrls}
           src={selectedPhotoUrl}
           photo={selectedPhoto}
           onClose={handleCloseLightbox}
